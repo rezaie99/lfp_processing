@@ -26,7 +26,7 @@ Note that oh-my-zsh includes built-in support for many features that would have 
 
 ## Install virtual environment
 
-We'll need to create a "virtual environment" where our WHOOP-specific
+We'll need to create a "virtual environment" where our LFP-Process
 packages can live. Install the virtualenv management tool first using pip3 to install. Note that the location of the .sh file may differ from below.  You will see the location of it as one of the output lines from the installation.
 
 ```bash
@@ -52,21 +52,86 @@ We also need to update some path variables before we create the virtual environm
 ```bash
 export VIRTUALENVWRAPPER_PYTHON=/usr/local/bin/python3
 export PATH=/Envs:$PATH
-export PATH=/Envs/whoop-sigproc/bin:/usr/local/bin:/usr/local/sbin:$PATH
 
 source /usr/local/bin/virtualenvwrapper.sh
 
-mkvirtualenv whoop-sigproc --python $(which python3)
 ```
 
 Reload your terminal to apply. The last command “mkvirtualenv” should create a virtual environment which causes your prompt to read something like:
 
 ```bash
-(whoop-sigproc)user@host:folder$
+(lfp-process)user@host:folder$
 ```
 
-If the terminal does not prompt (whoop-sigproc) the issue could be related to an incorrect default version of python. Try:
 
 ```bash
 python3 —version
 ```
+
+## Issues with Python 3
+
+By default we will install the latest version of python3. Historically the group uses Python v3.4. It is probably OK to use the latest, but, if we want to roll-back, tell Homebrew to install Python 3.4.x:
+
+```bash
+$ cd /usr/local
+$ git checkout fedb343 /usr/local/Library/Formula/python3.rb
+$ brew install python3
+$ git reset --hard
+```
+
+**Warning:** A naive `brew install python3` without a `git checkout` first will
+install the latest Python 3.x version (currently 3.4), which may *not* be
+compatible with our codebase.
+
+Verify that it installed properly:
+
+```bash
+$ python3 --version
+Python 3.4.?
+```
+
+
+## Uninstall Python 3 and PIP
+
+You need to deactivate the environment before removing python. This step works only if you installed python3 with brew to start. If the uninstall did not remove the link follow to brew to force unlink:
+
+```bash
+deactivate
+rmvirtualenv lfp-process
+brew uninstall --ignore-dependencies python3 --force
+brew install python3
+```
+
+if you need to update Xcode to to run the brew also 
+```bash
+xcode-select --install
+```
+
+You need to repeat all the installation
+
+if link failed:
+brew link --overwrite python3
+
+
+## Additional issues: Qt5 related-error
+
+The following issue was identified when running the following command:
+
+```bash
+
+./tools/readFlagsProcessedData.py --start 2020-02-16-06:00:00 --end 2020-02-16-19:04:00 --userID <SOME USER ID HERE>
+
+```
+
+The solution is to go to "~/.matplotlib" then edit or created a file named matplotlibrc and save the following line "backend: Qt5Agg"
+Namely:
+
+```bash
+cd ~/.matplotlib
+vim matplotlibrc
+
+# Insert the following line
+backend: Qt5Agg
+
+```
+
