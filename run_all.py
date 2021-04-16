@@ -3,6 +3,8 @@ import json
 
 
 
+
+
 # Open configurations
 with open('experiments/BWfus004_arena.json') as json_file:
     data = json.load(arena_data)
