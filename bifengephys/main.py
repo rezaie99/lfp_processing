@@ -3,6 +3,8 @@ import scipy.stats
 from scipy.signal import coherence
 from scipy.cluster.hierarchy import fcluster
 from sklearn import metrics
+from sklearn.linear_model import LinearRegression
+
 from trajectory_process import traj_process
 
 sys.path.append('D:\ephys')
@@ -10,6 +12,7 @@ import numpy as np
 from scipy.cluster import hierarchy
 from sklearn import cluster
 import matplotlib.pyplot as plt
+import seaborn as sns
 # %matplotlib notebook
 import glob
 import re  # Regular expression operations
@@ -108,50 +111,21 @@ mBWfus012 = {
 }
 
 
-def slice_from_arr(arr, idxs, channels=None, window=1, f_ephys=500, f_behavior=50, mean=True):
-    window_samples = window * f_ephys
-    f_ratio = f_ephys / f_behavior
-
-    if not channels:
-        channels = arr.shape[0]
-
-    ret = []
-    for channel in channels:
-        power_per_channel = []
-        for idx in idxs:
-            idx_in_ephys = f_ratio * idx
-            window_from = np.max([int(idx_in_ephys - window_samples), 0])
-            window_to = np.min([int(idx_in_ephys + window_samples), arr.shape[-1]-1])
-            if window_to==0:
-                window_to=1
-            bit_power = arr[channel, window_from:window_to]
-            if mean:
-                power_per_channel.append(bit_power.mean())
-            else:
-                power_per_channel.append(bit_power)
-        ret.append(np.vstack(power_per_channel))
-
-    if mean:
-        return np.stack(ret)[:, :, 0]
-    else:
-        return np.stack(ret)
-
-
 def main():
     # %%
     np.random.seed(42)
     animal = mBWfus009
-    session = 'ezm_0226'
+    session = 'ezm_0219'
     behavior_trigger = 14.24
-    events = traj_process(animal[session], behavior='ezm', start_time=0, duration=10)
-    # events = pickle.load(open('D:\\ephys\\2021-02-19_mBWfus009_EZM_ephys\ephys_processed\\2021-02-19_mBWfus009_EZM_ephys_results_manually_annotated.pickle',
-    #                           "rb"),)
+    events = traj_process(animal[session], behavior='ezm', start_time=0, duration=15)
+    # # events = pickle.load(open('D:\\ephys\\2021-02-19_mBWfus009_EZM_ephys\ephys_processed\\2021-02-19_mBWfus009_EZM_ephys_results_manually_annotated.pickle',
+    # #                           "rb"))
     f_behavior = 50
     f_ephys = 500
-    behavior_window_duration = 600
-    ephys_window_duration = 600
-
-    ### extract overall behavioral open/close frame indices
+    behavior_window_duration = 900
+    ephys_window_duration = 1000
+    #
+    # ### extract overall behavioral open/close frame indices
     open_idx = [i for i, el in enumerate(
         events['rois_stats']['roi_at_each_frame'][
         int(f_behavior * behavior_trigger):int(f_behavior * behavior_trigger) + f_behavior * behavior_window_duration])
@@ -162,301 +136,277 @@ def main():
         int(f_behavior * behavior_trigger):int(f_behavior * behavior_trigger) + f_behavior * behavior_window_duration])
                  if
                  el == 'closed']
-    open_to_close_idx = events['transitions']['open_closed_exittime']
-    prolonged_close_to_open_idx = events['transitions']['prolonged_open_closed_exittime']
-    prolonged_open_to_close_idx = events['transitions']['prolonged_closed_open_exittime']
+    OTC_idx = np.array(events['transitions']['open_closed_exittime']) - int(
+        f_behavior * behavior_trigger)  ## crop the frame before trigger
+
+    prOTC_idx = np.array(events['transitions']['prolonged_open_closed_exittime']) - int(f_behavior * behavior_trigger)
+    prCTO_idx = np.array(events['transitions']['prolonged_closed_open_exittime']) - int(f_behavior * behavior_trigger)
 
     dataset = ephys.load_data(animal[session])
 
     ### --- cluster analysis - returns relevant cluster channels
     # Todo: the cluster_threshold is sensitive. Can cause error
 
-    vhipp_channels = explore_clusters(dataset, "vhipp", cluster_threshold=2., plot=True)
-    mpfc_channels = explore_clusters(dataset, "mpfc", cluster_threshold=1.5, plot=True)
+    # mpfc_representative_channels = ephys.explore_clusters(dataset, "mpfc", cluster_threshold=1.2, plot=True)
+    # vhipp_representative_channels = ephys.explore_clusters(dataset, "vhipp", cluster_threshold=1.0, plot=True)
+    # mpfc_representative_channels = ephys.explore_clusters2(dataset, "mpfc",  plot=True)
+    # vhipp_representative_channels = ephys.explore_clusters2(dataset, "vhipp", plot=True)
 
+
+    ### --- aligning data, crop the ephys data prior to trigger
+    ephys_trigger = dataset['info']['ephys_trigger']
+    crop_from = int(f_ephys * ephys_trigger)
+    crop_to = int(f_ephys * (ephys_trigger + ephys_window_duration))
+
+    df_lfp_mpfc = ephys.column_by_pad(ephys.get_lfp_df(dataset, 'mpfc'))
+    df_lfp_vhipp = ephys.column_by_pad(ephys.get_lfp_df(dataset, 'vhipp'))
+
+    df_theta_mpfc = ephys.column_by_pad(ephys.get_power_df(dataset, 'mpfc', 'theta'))
+    df_theta_vhipp = ephys.column_by_pad(ephys.get_power_df(dataset, 'vhipp', 'theta'))
+
+    lfp_mpfc = df_lfp_mpfc.iloc[crop_from:crop_to].reset_index(drop=True)
+    lfp_vhipp = df_lfp_vhipp.iloc[crop_from:crop_to].reset_index(drop=True)
+
+    theta_mpfc = df_theta_mpfc.iloc[crop_from:crop_to].reset_index(drop=True)
+    theta_vhipp = df_theta_vhipp.iloc[crop_from:crop_to].reset_index(drop=True)
+
+
+    ## crosscorrelate the channels within each brain area
+    corr_matrix_mpfc = lfp_mpfc.iloc[:10000].corr()
+    corr_matrix_vhipp = lfp_vhipp.iloc[:10000].corr()
+
+    plt.matshow(corr_matrix_mpfc)
+    cb = plt.colorbar()
+    plt.xticks(range(corr_matrix_mpfc.select_dtypes(['number']).shape[1]),
+               corr_matrix_mpfc.select_dtypes(['number']).columns, fontsize=8, rotation=90)
+    plt.yticks(range(corr_matrix_mpfc.select_dtypes(['number']).shape[1]),
+               corr_matrix_mpfc.select_dtypes(['number']).columns, fontsize=8)
+    plt.show()
+
+    plt.matshow(corr_matrix_vhipp)
+    cb = plt.colorbar()
+    plt.xticks(range(corr_matrix_vhipp.select_dtypes(['number']).shape[1]),
+               corr_matrix_vhipp.select_dtypes(['number']).columns, fontsize=8, rotation=90)
+    plt.yticks(range(corr_matrix_vhipp.select_dtypes(['number']).shape[1]),
+               corr_matrix_vhipp.select_dtypes(['number']).columns, fontsize=8)
+    plt.show()
+
+    mpfc_pad = [2, 17, 25]
+    vhipp_pad = [35, 46, 58]
+
+    ## epoch theta power around certain events
+    theta_OTC_mpfc = ephys.epoch_data(theta_mpfc, channels=mpfc_pad, events=OTC_idx)
+    theta_OTC_vhipp = ephys.epoch_data(theta_vhipp, channels=vhipp_pad, events=OTC_idx)
+    theta_prCTO_mpfc = ephys.epoch_data(theta_mpfc, channels=mpfc_pad, events=prCTO_idx)
+    theta_prCTO_vhipp = ephys.epoch_data(theta_vhipp, channels=vhipp_pad, events=prCTO_idx)
+
+    ## epoch LFP around certain events
+    lfp_OTC_mpfc = ephys.epoch_data(lfp_mpfc, channels=mpfc_pad, events=OTC_idx)
+    lfp_OTC_vhipp = ephys.epoch_data(lfp_vhipp, channels=vhipp_pad, events=OTC_idx)
+    lfp_prCTO_mpfc = ephys.epoch_data(lfp_mpfc, channels=mpfc_pad, events=prCTO_idx)
+    lfp_prCTO_vhipp = ephys.epoch_data(lfp_vhipp, channels=vhipp_pad, events=prCTO_idx)
+
+    print(theta_OTC_mpfc.shape, theta_OTC_vhipp.shape, theta_prCTO_mpfc.shape, theta_prCTO_vhipp.shape)
+
+    ephys.plot_epochs(lfp_OTC_mpfc)
+    ephys.plot_epochs(lfp_OTC_vhipp)
+    ephys.plot_epochs(lfp_prCTO_mpfc)
+    ephys.plot_epochs(lfp_prCTO_vhipp)
+
+    power_prCTO = ephys.epoch_data()
+
+
+
+
+
+    a = 'break'
+
+
+
+    # mean power of the specified window size
+    # TODO: how to remove the outlier ?
+
+    ### time series plots for transition events
+    # power_prolonged_close_to_open = ephys.slice_from_arr(power_vhipp,
+    #                                                      prolonged_close_to_open_idx,
+    #                                                      channels=vhipp_representative_channels,
+    #                                                      window=2,
+    #                                                      mean=False)
+    #
+    # power_prolonged_open_to_close = ephys.slice_from_arr(power_vhipp,
+    #                                                      prolonged_open_to_close_idx,
+    #                                                      channels=vhipp_representative_channels,
+    #                                                      window=2,
+    #                                                      mean=False)
+    #
+    # power_open_to_close = ephys.slice_from_arr(power_vhipp,
+    #                                            open_to_close_idx,
+    #                                            channels=vhipp_representative_channels,
+    #                                            window=2,
+    #                                            mean=False)
+    #
+    # conditions = [power_prolonged_close_to_open, power_prolonged_open_to_close, power_open_to_close]
+    # titles = ['Power_PlCTO', 'power_PlOTC', 'power_OTC']
+    #
+    # fig, ax = plt.subplots(len(conditions), len(range(power_prolonged_close_to_open.shape[0])))
+    #
+    # for condition_idx, condition in enumerate(conditions):
+    #     for channel_idx, channel in enumerate(range(power_prolonged_close_to_open.shape[0])):
+    #         ax[condition_idx, channel_idx].set_title(titles[condition_idx] + '_ch:' + str(channel_idx))
+    #         ax[condition_idx, channel_idx].plot(power_prolonged_close_to_open[channel, :, :].transpose(), alpha=0.2)
+    #         ax[condition_idx, channel_idx].plot(power_prolonged_close_to_open.mean(axis=0).mean(axis=0).transpose())
+    #
+    # plt.show()
+
+    ### mean plots for checking power during different spatial dependencies
+    # iter = int(len(power_mpfc[0, :]) / window_samples)
+    # idxs = list(range(iter))
+    # mean_power_vhipp = slice_from_arr(power_vhipp, idxs, channels=vhipp_representative_channels)
+    # mean_power_mpfc = slice_from_arr(power_mpfc, idxs, channels=mpfc_representative_channels)
+    #
+    # open_power_vhipp = slice_from_arr(power_vhipp, open_idx, channels=vhipp_representative_channels, window=0)
+    # # TODO: fix nan
+    # closed_power_vhipp = slice_from_arr(power_vhipp, close_idx, channels=vhipp_representative_channels, window=0)
+    #
+    # power_prolonged_close_to_open = slice_from_arr(power_vhipp,
+    #                                                prolonged_close_to_open_idx,
+    #                                                channels=vhipp_representative_channels,
+    #                                                window=1,
+    #                                                mean=True)
+    # power_prolonged_open_to_close = slice_from_arr(power_vhipp,
+    #                                                prolonged_open_to_close_idx,
+    #                                                channels=vhipp_representative_channels,
+    #                                                window=1,
+    #                                                mean=True)
+    # power_open_to_close = slice_from_arr(power_vhipp,
+    #                                      open_to_close_idx,
+    #                                      channels=vhipp_representative_channels,
+    #                                      window=1,
+    #                                      mean=True)
+    # TODO: extract 'T' timepoints from
+    # transition_idxs = all the transition indices calculated from exit to entry
+    # transition_power_vhipp = slice_from_arr(power_vhipp, transition_idxs, channels=vhipp_representative_channels, window=0)
+
+    #
+    # conditions = [mean_power_vhipp.flatten(),
+    #               open_power_vhipp.flatten(),
+    #               closed_power_vhipp.flatten(),
+    #               transition_power_vhipp.flatten(),
+    #               ]
+
+    # conditions = [mean_power_vhipp.flatten(),
+    #               open_power_vhipp.flatten(),
+    #               closed_power_vhipp.flatten(),
+    #               # transition_power_vhipp.flatten(),
+    #               power_prolonged_close_to_open.flatten(),
+    #               power_prolonged_open_to_close.flatten()]
+    # titles = ['mean_power_vhipp', 'open_power_vhipp', 'closed_power_vhipp', 'power_prolonged_close_to_open',
+    #           'power_prolonged_open_to_close']
+
+    # import seaborn as sns
+    # sns.boxplot(x=titles, y=conditions, )
+    #
+    # fig, ax = plt.subplots(nrows=len(mpfc_representative_channels),
+    #                        ncols=len(vhipp_representative_channels),
+    #                        figsize=(10, 13))
+    # avg_win = int(50 * 2.6)
+    # for ch_mpfc, power_per_ch_mpfc in enumerate(power_mpfc_open):
+    #     for ch_vhipp, power_per_ch_vhipp in enumerate(power_vhipp_open):
+    #         print(ch_mpfc, ch_vhipp)
+    #         new_len_open = int(len(power_per_ch_mpfc) // avg_win)
+    #         print(new_len_open)
+    #         x = np.mean(np.reshape(power_per_ch_mpfc[:new_len_open * avg_win], (avg_win, new_len_open)),
+    #                     axis=0)  # power_vhipp_open[chan_vhipp, :]
+    #         print(x.shape, np.isnan(x).any())
+    #         y = np.mean(np.reshape(power_per_ch_vhipp[:new_len_open * avg_win], (avg_win, new_len_open)),
+    #                     axis=0)  # power_mpfc_close[chan_mpfc, :]
+    #         print(y.shape, np.isnan(y).any())
+    #         # # TODO: zscore here? how to remove the outlier ?
+    #         x = scipy.stats.zscore(x)
+    #         y = scipy.stats.zscore(y)
+    #         slope, intercept, r_value, p_value, std_err = scipy.stats.linregress(x, y)
+    #         ax[ch_mpfc, ch_vhipp].scatter(x, y)
+    #         ax[ch_mpfc, ch_vhipp].set_title('R-squared = %0.2f' % r_value ** 2)
+    #         ax[ch_mpfc, ch_vhipp].set_xlabel(
+    #             'Z-scored theta power' + '\n' + 'mpfc ch' + str(mpfc_representative_channels[ch_mpfc]))
+    #         ax[ch_mpfc, ch_vhipp].set_ylabel(
+    #             'Z-scored theta power' + '\n' + 'vhipp ch' + str(vhipp_representative_channels[ch_vhipp]))
+    #         sns.regplot(x=x, y=y, ax=ax[ch_mpfc, ch_vhipp])
+    #         # ax[ch_mpfc, ch_vhipp].plot(np.unique(x), np.poly1d(np.polyfit(x, y, 1))(np.unique(x)))
+    # fig.tight_layout()
+    # fig.show()
+    #
+    # fig, ax = plt.subplots(nrows=len(mpfc_representative_channels),
+    #                        ncols=len(vhipp_representative_channels),
+    #                        figsize=(10, 13))
+    # avg_win = int(50 * 2.6)
+    # for ch_mpfc, power_per_ch_mpfc in enumerate(power_mpfc_close):
+    #     for ch_vhipp, power_per_ch_vhipp in enumerate(power_vhipp_close):
+    #         print(ch_mpfc, ch_vhipp)
+    #         new_len_close = int(len(power_per_ch_mpfc) // avg_win)
+    #         print(new_len_close)
+    #         x = np.mean(np.reshape(power_per_ch_mpfc[:new_len_close * avg_win], (avg_win, new_len_close)),
+    #                     axis=0)  # power_vhipp_open[chan_vhipp, :]
+    #         print(x.shape, np.isnan(x).any())
+    #         y = np.mean(np.reshape(power_per_ch_vhipp[:new_len_close * avg_win], (avg_win, new_len_close)),
+    #                     axis=0)  # power_mpfc_close[chan_mpfc, :]
+    #         print(y.shape, np.isnan(y).any())
+    #         # # TODO: zscore here? how to remove the outlier ?
+    #         x = scipy.stats.zscore(x)
+    #         y = scipy.stats.zscore(y)
+    #         slope, intercept, r_value, p_value, std_err = scipy.stats.linregress(x, y)
+    #         ax[ch_mpfc, ch_vhipp].scatter(x, y)
+    #         ax[ch_mpfc, ch_vhipp].set_title('R-squared = %0.2f' % r_value ** 2)
+    #         ax[ch_mpfc, ch_vhipp].set_xlabel(
+    #             'Z-scored theta power' + '\n' + 'mpfc ch' + str(mpfc_representative_channels[ch_mpfc]))
+    #         ax[ch_mpfc, ch_vhipp].set_ylabel(
+    #             'Z-scored theta power' + '\n' + 'vhipp ch' + str(vhipp_representative_channels[ch_vhipp]))
+    #         sns.regplot(x=x, y=y, ax=ax[ch_mpfc, ch_vhipp])
+    #         # ax[ch_mpfc, ch_vhipp].plot(np.unique(x), np.poly1d(np.polyfit(x, y, 1))(np.unique(x)))
+    # fig.tight_layout()
+    # fig.show()
+
+    ### --- overall coherence analysis
     # coherence between areas
 
     lfp_mpfc = ephys.get_lfp(dataset, brain_area='mpfc')
     lfp_vhipp = ephys.get_lfp(dataset, brain_area='vhipp')
 
-    ### --- aligning data
-    ephys_trigger = dataset['info']['ephys_trigger']
-
-    ### - crop out ephys trigger
+    ### crop the ephys data prior to trigger
     lfp_mpfc = lfp_mpfc[:, int(f_ephys * ephys_trigger):]
     lfp_vhipp = lfp_vhipp[:, int(f_ephys * ephys_trigger):]
-    power_mpfc = ephys.get_power(dataset, 'mpfc')
-    power_vhipp = ephys.get_power(dataset, 'vhipp')
 
-    power_mpfc = power_mpfc[:, int(f_ephys * ephys_trigger):f_ephys * ephys_window_duration]
-    power_vhipp = power_vhipp[:, int(f_ephys * ephys_trigger):f_ephys * ephys_window_duration]
+    coherence_mpfc_to_vhipp = np.zeros((len(vhipp_representative_channels), len(vhipp_representative_channels)))
+    coherence_bands = []
+    correlation_vals = []
 
-    # downsample to the same srate as video
-    # power_mpfc = signal.decimate(power_mpfc[:, int(500 * ephys_trigger):], 10, ftype='fir', zero_phase=True)
-    # power_vhipp = signal.decimate(power_vhipp[:, int(500 * ephys_trigger):], 10, ftype='fir', zero_phase=True)
+    new_freq = 50
+    old_freq = 500
 
-    ### --- windowed power calculation
-    # TODO: cleanup - fcn
-    power_vhipp_open = []
-    power_mpfc_open = []
+    for vhipp_id, vhipp_channel in enumerate(vhipp_representative_channels):
+        vhipp_data = lfp_vhipp[vhipp_channel, :old_freq * 100]
+        for mpfc_id, mpfc_channel in enumerate(vhipp_representative_channels):
+            mpfc_data = lfp_mpfc[mpfc_channel, :old_freq * 100]
+            this_coherence = coherence(x=vhipp_data, y=mpfc_data, fs=old_freq)[1][:20]
+            coherence_mpfc_to_vhipp[vhipp_id, mpfc_id] = this_coherence.mean()
+            coherence_bands.append(this_coherence)
+            correlate = signal.correlate(vhipp_data, mpfc_data, mode='same')
+            # resample to 50 hz
+            samples = int(len(correlate) * (new_freq / old_freq))
+            correlate = signal.resample(correlate, samples)
+            correlation_vals.append(correlate)
 
-    # power_vhipp_open = [power_vhipp[:, 10 * idx] for idx in open_idx]
-    # power_mpfc_open = [power_mpfc[:, 10 * idx] for idx in open_idx]
-    # power_vhipp_open = np.array(power_vhipp_open).T
-    # power_mpfc_open = np.array(power_mpfc_open).T
-    #
-    # power_vhipp_close = [power_vhipp[:, 10 * idx] for idx in open_idx]
-    # power_mpfc_close = [power_vhipp[:, 10 * idx] for idx in open_idx]
-    # power_vhipp_close = np.array(power_vhipp_close).T
-    # power_mpfc_close = np.array(power_mpfc_close).T
-
-    mean_power_mpfc = []
-    mean_power_vhipp = []
-
-    window_samples = 500  # 2 second
-
-    # mean power of the specified window size
-    # how to remove the outlier ?
-
-    ### time series plots for transition events
-    power_prolonged_close_to_open = slice_from_arr(power_vhipp,
-                                                   prolonged_close_to_open_idx,
-                                                   channels=vhipp_channels,
-                                                   window=1,
-                                                   mean=False)
-    power_prolonged_open_to_close = slice_from_arr(power_vhipp,
-                                                   prolonged_open_to_close_idx,
-                                                   channels=vhipp_channels,
-                                                   window=1,
-                                                   mean=False)
-    power_open_to_close = slice_from_arr(power_vhipp,
-                                                   open_to_close_idx,
-                                                   channels=vhipp_channels,
-                                                   window=1,
-                                                   mean=False)
-    conditions = [power_prolonged_close_to_open, power_prolonged_open_to_close, power_open_to_close]
-    titles = ['power_prolonged_close_to_open','power_prolonged_open_to_close','power_open_to_close']
-
-    fig, ax = plt.subplots(len(conditions),len(range(power_prolonged_close_to_open.shape[0])))
-
-    for condition_idx, condition in enumerate(conditions):
-        for channel_idx, channel in enumerate(range(power_prolonged_close_to_open.shape[0])):
-            ax[condition_idx,channel_idx].set_title(titles[condition_idx] + '__channel:' + str(channel_idx))
-            ax[condition_idx,channel_idx].plot(power_prolonged_close_to_open[channel,:,:].transpose())
+    plt.imshow(coherence_mpfc_to_vhipp)
+    plt.colorbar()
     plt.show()
 
+    fig, ax = plt.subplots(len(correlation_vals), 1)
+    for val_id, val in enumerate(correlation_vals):
+        ax[val_id].plot(val)
 
-    ### mean plots for checking power during different spatial dependencies
-    iter = int(len(power_mpfc[0, :]) / window_samples)
-    idxs = list(range(iter))
-    mean_power_vhipp = slice_from_arr(power_vhipp, idxs, channels=vhipp_channels)
-    mean_power_mpfc = slice_from_arr(power_mpfc, idxs, channels=mpfc_channels)
+    plt.show()
 
-    open_power_vhipp = slice_from_arr(power_vhipp, open_idx, channels=vhipp_channels, window=0)
-    #TODO: fix nan
-    closed_power_vhipp = slice_from_arr(power_vhipp, close_idx, channels=mpfc_channels, window=0)
-
-    power_prolonged_close_to_open = slice_from_arr(power_vhipp,
-                                                   prolonged_close_to_open_idx,
-                                                   channels=vhipp_channels,
-                                                   window=1,
-                                                   mean=True)
-    power_prolonged_open_to_close = slice_from_arr(power_vhipp,
-                                                   prolonged_open_to_close_idx,
-                                                   channels=vhipp_channels,
-                                                   window=1,
-                                                   mean=True)
-    power_open_to_close = slice_from_arr(power_vhipp,
-                                                   open_to_close_idx,
-                                                   channels=vhipp_channels,
-                                                   window=1,
-                                                   mean=True)
-
-    conditions = [mean_power_vhipp.flatten(),
-                  open_power_vhipp.flatten(),
-                  closed_power_vhipp.flatten(),
-                  power_prolonged_close_to_open.flatten(),
-                  power_prolonged_open_to_close.flatten()]
-    titles = ['mean_power_vhipp','open_power_vhipp','closed_power_vhipp','power_prolonged_close_to_open','power_prolonged_open_to_close']
-
-    import seaborn as sns
-    sns.boxplot(x=titles, y=conditions,)
-
-    plotting = 0
-    if plotting:
-
-        fig, ax = plt.subplots(nrows=len(mpfc_channels),
-                               ncols=len(vhipp_channels), figsize=(10, 13))
-        for chan_mpfc, _ in enumerate(mean_power_mpfc):
-            for chan_vhipp, _ in enumerate(mean_power_vhipp):
-                x = mean_power_vhipp[chan_vhipp, :]
-                y = mean_power_mpfc[chan_mpfc, :]
-                # TODO: zscore here? how to remove the outlier ?
-                x = scipy.stats.zscore(x)
-                y = scipy.stats.zscore(y)
-                r2 = scipy.stats.pearsonr(x, y)
-                # plt.text('R-squared = %0.2f' % r2)
-                # test = scipy.stats.zscore(x)
-                # TODO: double check to square the r value?!
-                slope, intercept, r_value, p_value, std_err = scipy.stats.linregress(x, y)
-                ax[chan_mpfc, chan_vhipp].scatter(x, y)
-                ax[chan_mpfc, chan_vhipp].set_title('R-squared = %0.2f' % r_value)
-                ax[chan_mpfc, chan_vhipp].set_xlabel('mpfc ' + str(mpfc_channels[chan_mpfc]))
-                ax[chan_mpfc, chan_vhipp].set_ylabel('vhipp' + str(vhipp_channels[chan_vhipp]))
-                ax[chan_mpfc, chan_vhipp].plot(np.unique(x), np.poly1d(np.polyfit(x, y, 1))(np.unique(x)))
-        fig.tight_layout()
-        fig.show()
-
-        fig, ax = plt.subplots(nrows=len(mpfc_channels),
-                               ncols=len(vhipp_channels), figsize=(10, 13))
-        for chan_mpfc, _ in enumerate(mean_power_mpfc):
-            for chan_vhipp, _ in enumerate(mean_power_vhipp):
-                x = mean_power_vhipp[chan_vhipp, :]
-                y = mean_power_mpfc[chan_mpfc, :]
-                # TODO: zscore here?
-                x = scipy.stats.zscore(x)
-                y = scipy.stats.zscore(y)
-                r2 = scipy.stats.pearsonr(x, y)
-                # plt.text('R-squared = %0.2f' % r2)
-                # test = scipy.stats.zscore(x)
-                # TODO: double check to square the r value?!
-                slope, intercept, r_value, p_value, std_err = scipy.stats.linregress(x, y)
-                ax[chan_mpfc, chan_vhipp].scatter(x, y)
-                ax[chan_mpfc, chan_vhipp].set_title('R-squared = %0.2f' % r_value)
-                ax[chan_mpfc, chan_vhipp].set_xlabel('mpfc ' + str(mpfc_channels[chan_mpfc]))
-                ax[chan_mpfc, chan_vhipp].set_ylabel('vhipp' + str(vhipp_channels[chan_vhipp]))
-                ax[chan_mpfc, chan_vhipp].plot(np.unique(x), np.poly1d(np.polyfit(x, y, 1))(np.unique(x)))
-        fig.tight_layout()
-        # xlabel('vhipp representative channels')
-        # ylabel('mpfc representative channels')
-        fig.show()
-
-        ### --- overall coherence analysis
-
-        coherence_mpfc_to_vhipp = np.zeros((len(vhipp_channels), len(mpfc_channels)))
-        coherence_bands = []
-        correlation_vals = []
-
-        new_freq = 50
-        old_freq = 500
-
-        for vhipp_id, vhipp_channel in enumerate(vhipp_channels):
-            vhipp_data = lfp_vhipp[vhipp_channel, :old_freq * 100]
-            for mpfc_id, mpfc_channel in enumerate(mpfc_channels):
-                mpfc_data = lfp_mpfc[mpfc_channel, :old_freq * 100]
-                this_coherence = coherence(x=vhipp_data, y=mpfc_data, fs=old_freq)[1][:20]
-                coherence_mpfc_to_vhipp[vhipp_id, mpfc_id] = this_coherence.mean()
-                coherence_bands.append(this_coherence)
-                correlate = signal.correlate(vhipp_data, mpfc_data, mode='same')
-                # resample to 50 hz
-                samples = int(len(correlate) * (new_freq / old_freq))
-                correlate = signal.resample(correlate, samples)
-                correlation_vals.append(correlate)
-
-        plt.imshow(coherence_mpfc_to_vhipp)
-        plt.colorbar()
-        plt.show()
-
-        fig, ax = plt.subplots(len(correlation_vals), 1)
-        for val_id, val in enumerate(correlation_vals):
-            ax[val_id].plot(val)
-
-        plt.show()
-
-        print('done')
-
-
-def explore_clusters(dataset, area, cluster_threshold, plot=True):
-    lfp = ephys.get_lfp(dataset, brain_area=area)
-    power = ephys.get_power(dataset, area)
-    chanl_list = ephys.get_ch(dataset, brain_area=area)
-    coherence_matrix = np.zeros((len(lfp), len(lfp)))
-    start = 30
-    srate = 500
-
-    frequs = [5, 25]
-    idxs = [3, 13]
-
-    for x_id, x in tqdm(enumerate(lfp[:, start * srate:(start + 100) * srate])):
-        for y_id, y in enumerate(lfp[:, start * srate:(start + 100) * srate]):
-            coherence_matrix[x_id, y_id] = coherence(x=x, y=y, fs=500)[1][:20].mean()
-
-    if plot:
-        plt.figure(figsize=(10, 10))
-        plt.imshow(coherence_matrix, cmap='jet')
-        plt.colorbar()
-        plt.show()
-
-    corr_linkage = hierarchy.ward(coherence_matrix)
-    dendro = hierarchy.dendrogram(corr_linkage, leaf_rotation=90)
-    dendro_idx = np.arange(0, len(dendro["ivl"]))
-
-    dendro_idx_pad = [str(ephys.arr_to_pad(chanl_list[int(el)])) for el in list(dendro["ivl"])]
-
-    if plot:
-        fig, ax = plt.subplots(1, 1, figsize=(6, 6))
-        im = ax.imshow(coherence_matrix[dendro["leaves"], :][:, dendro["leaves"]], cmap="jet")
-        ax.set_xticks(dendro_idx)
-        ax.set_yticks(dendro_idx)
-        ax.set_xticklabels(dendro_idx_pad, rotation="vertical")
-        ax.set_yticklabels(dendro_idx_pad)
-        fig.tight_layout()
-        fig.colorbar(im, orientation="vertical")
-        plt.show()
-
-    # clusters based on thresholding
-    clusters = fcluster(corr_linkage, cluster_threshold, criterion='distance')
-
-    # sort elements by clusters and put into dictionary
-    test1 = [x for _, x in sorted(zip(clusters, dendro_idx))]
-    test2 = [x for x, _ in sorted(zip(clusters, dendro_idx))]
-    clusts = [str(ephys.arr_to_pad(chanl_list[int(el)])) for el in test1]
-    clusters_array = {}
-    clusters_pad = {}
-    for id, cluster in enumerate(test2):
-        if cluster not in clusters_array.keys():
-            clusters_array[cluster] = []
-            clusters_pad[cluster] = []
-        else:
-            clusters_array[cluster].append(test1[id])
-            clusters_pad[cluster].append(clusts[id])
-
-    # double checking clustering single channel
-    # chan1 = 16
-    # chan2 = 19
-    #
-    # channels = coherence(x=lfp[chan1, :500 * 100], y=lfp[chan2, :500 * 100], fs=500)[1][
-    #            :20].mean()
-    # print(dendro["leaves"])
-    # print(channels)
-
-    for cluster in clusters_array.keys():
-        means = []
-        for channel_1 in clusters_array[cluster]:
-            for channel_2 in clusters_array[cluster]:
-                if channel_2 == channel_1:
-                    continue
-                means.append(
-                    coherence(x=lfp[channel_1, start * srate:(start + 100) * srate],
-                              y=lfp[channel_2, start * srate:(start + 100) * srate], fs=srate)[1][:20].mean())
-
-        print('mean coherence for cluster :' + str(cluster) + '  is:' + str(np.mean(means)) + 'and std: ' + str(
-            np.std(means)))
-        print(clusters_array[cluster])
-        print(clusters_pad[cluster])
-
-    # TODO: check for outliers like channel 41 in vHipp
-    # TODO: check smarter solution than just selecting one
-
-    # select channel with highest power
-    representative_channels = []
-    for cluster in clusters_array.keys():
-        cluster_power = power[clusters_array[cluster], :]
-        cluster_power = np.nanmean(cluster_power, axis=1)  # cluster_power.mean(axis=1)
-        channel_idx = np.where(cluster_power == np.max(cluster_power))[0][0]  ### this line caused error in some dataset
-        representative_channels.append(clusters_array[cluster][channel_idx])
-
-    return representative_channels
+    print('done')
 
 
 if __name__ == '__main__':

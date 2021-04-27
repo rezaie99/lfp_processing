@@ -1,32 +1,34 @@
 import pickle
 import numpy as np
+import pandas as pd
+from scipy.signal import coherence
+import matplotlib.pyplot as plt
+from tqdm import tqdm
+from scipy.cluster import hierarchy
+from scipy.cluster.hierarchy import fcluster
+from sklearn.cluster import KMeans
+import os
+import sys
+
+
+# sys.path.append('D:\ephys')
 
 
 def load_data(session):
     print(session)
-    with open(session + '/ephys_processed/' + session + '_dataset.pkl', "rb") as f:
+    file = 'D:\\ephys\\' + session + '\\ephys_processed\\' + session + '_dataset.pkl'
+    # with open(session + '/ephys_processed/' + session + '_dataset.pkl', "rb") as f:
+    with open(file, 'rb') as f:
         data = pickle.load(f)
         f.close()
     return data
 
 
-def load_traj(session):
-    print(session)
-    return pickle.load(open(session + '/ephys_processed/' + session + '_movement.pkl', "rb"))
-
-
-def load_rois(session):
-    print(session)
-    return pickle.load(open(session + '/ephys_processed/' + session + '_rois.pkl', "rb"))
-
-
-def load_event(session):
-    print(session)
-    return pickle.load(open(session + '/ephys_processed/' + session + '_transition.pkl', "rb"))
-
-
 def get_ch(data, brain_area):
-    return data['info']['ch_names']['ch_' + brain_area]
+    if brain_area == 'all':
+        return sum(data['info']['ch_names'].values(), [])
+    else:
+        return data['info']['ch_names']['ch_' + brain_area]
 
 
 def get_lfp(dataset, brain_area):
@@ -55,6 +57,63 @@ def get_phase(dataset, brain_area, band='theta'):
         phase = dataset['bands'][band]['phase'][:len(get_ch(dataset, 'mpfc')), :]
     if brain_area == 'vhipp':
         phase = dataset['bands'][band]['phase'][len(get_ch(dataset, 'mpfc')):, :]
+    print(phase.shape)
+    return phase
+
+
+def get_lfp_df(dataset, brain_area):
+    print(dataset['lfp']['amplifier_data'].shape)
+    if brain_area == 'all':
+        lfp = dataset['lfp']['amplifier_data']
+        ch_list = get_ch(dataset, 'all')
+        lfp = pd.DataFrame(data=lfp.T, columns=ch_list)
+    if brain_area == 'mpfc':
+        lfp = dataset['lfp']['amplifier_data'][:len(get_ch(dataset, 'mpfc')), :]
+        lfp = pd.DataFrame(data=lfp.T, columns=get_ch(dataset, 'mpfc'))
+    if brain_area == 'vhipp':
+        lfp = dataset['lfp']['amplifier_data'][len(get_ch(dataset, 'mpfc')):, :]
+        lfp = pd.DataFrame(data=lfp.T, columns=get_ch(dataset, 'vhipp'))
+    print(lfp.shape)
+    return lfp
+
+
+def get_power_df(dataset, brain_area, band='theta'):
+    print(dataset['lfp']['amplifier_data'].shape)
+    if brain_area == 'all':
+        ch_list = get_ch(dataset, 'all')
+        dat = dataset['bands'][band]['power']
+        power = pd.DataFrame(data=dat.T, columns=ch_list)
+
+    if brain_area == 'mpfc':
+        ch_list = get_ch(dataset, 'mpfc')
+        dat = dataset['bands'][band]['power'][:len(ch_list), :]
+        power = pd.DataFrame(data=dat.T, columns=ch_list)
+
+    if brain_area == 'vhipp':
+        ch_list = get_ch(dataset, 'vhipp')
+        dat = dataset['bands'][band]['power'][len(get_ch(dataset, 'mpfc')):, :]
+        power = pd.DataFrame(data=dat.T, columns=ch_list)
+
+    print(power.shape)
+    return power
+
+
+def get_phase_df(dataset, brain_area, band='theta'):
+    if brain_area == 'all':
+        dat = dataset['bands'][band]['phase']
+        ch_list = get_ch(dataset, 'all')
+        phase = pd.DataFrame(data=dat.T, columns=ch_list)
+
+    if brain_area == 'mpfc':
+        ch_list = get_ch(dataset, 'mpfc')
+        dat = dataset['bands'][band]['phase'][:len(ch_list), :]
+        phase = pd.DataFrame(data=dat.T, columns=ch_list)
+
+    if brain_area == 'vhipp':
+        ch_list = get_ch(dataset, 'vhipp')
+        dat = dataset['bands'][band]['phase'][len(get_ch(dataset, 'mpfc')):, :]
+        phase = pd.DataFrame(data=dat.T, columns=ch_list)
+
     print(phase.shape)
     return phase
 
@@ -118,15 +177,15 @@ intan_array_to_zif_connector = ['B23', 'T1', 'T34', 'B18', 'B19', 'B20', 'T33', 
 
 
 def arr_to_pad(el):
-    array_to_pad = {} ### how ephys data array register to the electrode pad. pad1-32 are in the mPFC, with pad1 is the deepest.
+    array_to_pad = {}  ### how ephys data array register to the electrode pad. pad1-32 are in the mPFC, with pad1 is the deepest.
 
     cmap = sixtyfour_ch_solder_pad_to_zif(intan_array_to_zif_connector)
-    for i in range(1,65):
-        chan_name = np.where(cmap==i)[0][0]
+    for i in range(1, 65):
+        chan_name = np.where(cmap == i)[0][0]
         if chan_name < 10:
-            array_to_pad['A-00'+ str(chan_name)]=str(i)
+            array_to_pad['A-00' + str(chan_name)] = str(i)
         else:
-            array_to_pad['A-0'+ str(chan_name)]=str(i)
+            array_to_pad['A-0' + str(chan_name)] = str(i)
     return array_to_pad[el]
 
 
@@ -137,6 +196,291 @@ def pad_to_array():
     for i in range(1, 65):
         pad_to_array.append(np.where(cmap == i)[0][0])
         pad_to_array_text.append('pad' + str(i) + '== A-0' + str(np.where(cmap == i)[0][0]))
+
     return pad_to_array, pad_to_array_text
 
 
+def get_pad_name(df):
+    pad_arr_idx = np.array(pad_to_array()[0])
+    pad_list = []
+    for col in df.columns:
+        col_idx = int(col.split('-')[1])
+        pad_list.append(np.where(pad_arr_idx == col_idx)[0][0])
+
+    return pad_list
+
+### rearrange the columns in the order of the electrode depth
+def column_by_pad(df):
+    col_name = get_pad_name(df)
+    df.columns = col_name
+    df = df.reindex(sorted(df.columns), axis=1)
+    return df
+
+
+def explore_clusters(dataset, area, cluster_threshold, plot=True, n_clusters=4):
+    lfp = get_lfp(dataset, brain_area=area)
+    power = get_power(dataset, area)
+    chanl_list = get_ch(dataset, brain_area=area)
+    coherence_matrix = np.zeros((len(lfp), len(lfp)))
+    start = 30
+    fps = 500
+
+    # frequs = [5, 25]
+    # idxs = [3, 13]
+
+    for x_id, x in tqdm(enumerate(lfp[:, start * fps:(start + 20) * fps])):
+        for y_id, y in enumerate(lfp[:, start * fps:(start + 20) * fps]):
+            coherence_matrix[x_id, y_id] = coherence(x=x, y=y, fs=500)[1][:20].mean()
+
+    if plot:
+        plt.figure(figsize=(10, 10))
+        plt.imshow(coherence_matrix, cmap='jet')
+        plt.colorbar()
+        plt.show()
+
+    corr_linkage = hierarchy.ward(coherence_matrix)
+    dendro = hierarchy.dendrogram(corr_linkage, leaf_rotation=90)
+    dendro_idx = np.arange(0, len(dendro["ivl"]))
+    dendro_idx_pad = [str(arr_to_pad(chanl_list[int(el)])) for el in list(dendro["ivl"])]
+
+    if plot:
+        fig, ax = plt.subplots(1, 1, figsize=(6, 6))
+        im = ax.imshow(coherence_matrix[dendro["leaves"], :][:, dendro["leaves"]], cmap="jet")
+
+        ax.set_xticks(dendro_idx)
+        ax.set_yticks(dendro_idx)
+        ax.set_xticklabels(dendro_idx_pad, rotation="vertical")
+        ax.set_yticklabels(dendro_idx_pad)
+        fig.tight_layout()
+        fig.colorbar(im, orientation="vertical")
+        plt.title('Coherence_ch_in_' + area)
+        plt.show()
+
+    # clusters based on thresholding
+    clusters = fcluster(corr_linkage, cluster_threshold, criterion='distance')
+    # sort elements by clusters and put into dictionary
+    test1 = [x for _, x in sorted(zip(clusters, dendro_idx))]
+    test2 = [x for x, _ in sorted(zip(clusters, dendro_idx))]
+    clusts = [str(arr_to_pad(chanl_list[int(el)])) for el in test1]
+    clusters_array = {}
+    clusters_pad = {}
+    for id, cluster in enumerate(test2):
+        if cluster not in clusters_array.keys():
+            clusters_array[cluster] = []
+            clusters_pad[cluster] = []
+        else:
+            clusters_array[cluster].append(test1[id])
+            clusters_pad[cluster].append(clusts[id])
+
+    for cluster in clusters_array.keys():
+        means = []
+        for channel_1 in clusters_array[cluster]:
+            for channel_2 in clusters_array[cluster]:
+                if channel_2 == channel_1:
+                    continue
+                means.append(
+                    coherence(x=lfp[channel_1, start * fps:(start + 20) * fps],
+                              y=lfp[channel_2, start * fps:(start + 20) * fps], fs=fps)[1][:20].mean())
+
+        print('mean coherence for cluster :' + str(cluster) + '  is:' + str(np.mean(means)) + 'and std: ' + str(
+            np.std(means)))
+        print(clusters_array[cluster])
+        print(clusters_pad[cluster])
+
+    # TODO: check for outliers like channel 41 in vHipp
+    # TODO: check smarter solution than just selecting one
+
+    # select channel with highest power
+    representative_channels = []
+    for cluster in clusters_array.keys():
+        cluster_power = power[clusters_array[cluster], :]
+        cluster_power = np.nanmean(cluster_power, axis=1)  # cluster_power.mean(axis=1)
+        channel_idx = np.where(cluster_power == np.max(cluster_power))[0][0]  ### this line caused error in some dataset
+        representative_channels.append(clusters_array[cluster][channel_idx])
+
+    return representative_channels
+
+
+def explore_clusters2(dataset, area, plot=True, n_clusters=4):
+    lfp = get_lfp(dataset, brain_area=area)
+    power = get_power(dataset, area)
+    channel_list = get_ch(dataset, brain_area=area)
+    coherence_matrix = np.zeros((len(lfp), len(lfp)))
+    start = 30
+    srate = 500
+
+    for x_id, x in tqdm(enumerate(lfp[:, start * srate:(start + 20) * srate])):
+        for y_id, y in enumerate(lfp[:, start * srate:(start + 20) * srate]):
+            coherence_matrix[x_id, y_id] = coherence(x=x, y=y, fs=500)[1][:20].mean()  # ? take mean or theta band?
+
+    if plot:
+        plt.figure(figsize=(10, 10))
+        plt.imshow(coherence_matrix, cmap='jet')
+        plt.colorbar()
+        plt.show()
+
+    kmeans = KMeans(n_clusters=n_clusters, n_jobs=-1)
+    kmeans.fit(coherence_matrix)
+    kmclust = kmeans.labels_
+    # corr_linkage = hierarchy.ward(coherence_matrix)
+    # dendro = hierarchy.dendrogram(corr_linkage, leaf_rotation=90)
+    # dendro_idx = np.arange(0, len(dendro["ivl"]))
+    dendro_idx = np.arange(0, len(kmclust))
+    numbering = np.where(kmclust == 0)[0]
+    for i in range(1, kmclust.size):
+        numbering = np.append(numbering, np.where(kmclust == i)[0])
+
+    # dendro_idx_pad = [str(arr_to_pad(chanl_list[int(el)])) for el in list(dendro["ivl"])]
+    dendro_idx_pad = [str(arr_to_pad(channel_list[int(el)])) for el in list(kmclust)]
+
+    if plot:
+        fig, ax = plt.subplots(1, 1, figsize=(6, 6))
+        # im = ax.imshow(coherence_matrix[dendro["leaves"], :][:, dendro["leaves"]], cmap="jet")
+        im = ax.imshow(coherence_matrix[numbering, :][:, numbering], cmap="jet")
+
+        ax.set_xticks(dendro_idx)
+        ax.set_yticks(dendro_idx)
+        ax.set_xticklabels(dendro_idx_pad, rotation="vertical")
+        ax.set_yticklabels(dendro_idx_pad)
+        fig.tight_layout()
+        fig.colorbar(im, orientation="vertical")
+        plt.title('plot1 ' + area)
+        plt.show()
+
+    clusters = kmclust
+    # sort elements by clusters and put into dictionary
+    test1 = [x for _, x in sorted(zip(clusters, dendro_idx))]
+    test2 = [x for x, _ in sorted(zip(clusters, dendro_idx))]
+    clusts = [str(arr_to_pad(channel_list[int(el)])) for el in test1]
+    clusters_array = {}
+    clusters_pad = {}
+    for id, cluster in enumerate(test2):
+        if cluster not in clusters_array.keys():
+            clusters_array[cluster] = []
+            clusters_pad[cluster] = []
+        else:
+            clusters_array[cluster].append(test1[id])
+            clusters_pad[cluster].append(clusts[id])
+
+    for cluster in clusters_array.keys():
+        means = []
+        for channel_1 in clusters_array[cluster]:
+            for channel_2 in clusters_array[cluster]:
+                if channel_2 == channel_1:
+                    continue
+                means.append(
+                    coherence(x=lfp[channel_1, start * srate:(start + 20) * srate],
+                              y=lfp[channel_2, start * srate:(start + 20) * srate], fs=srate)[1][:20].mean())
+
+        print('mean coherence for cluster :' + str(cluster) + '  is:' + str(np.mean(means)) + 'and std: ' + str(
+            np.std(means)))
+        print(clusters_array[cluster])
+        print(clusters_pad[cluster])
+
+    # TODO: check for outliers like channel 41 in vHipp
+    # TODO: check smarter solution than just selecting one
+
+    # select channel with highest power
+    representative_channels = []
+    for cluster in clusters_array.keys():
+        cluster_power = power[clusters_array[cluster], :]
+        cluster_power = np.nanmean(cluster_power, axis=1)  # cluster_power.mean(axis=1)
+        try:
+            channel_idx = np.where(cluster_power == np.max(cluster_power))[0][
+                0]  ### this line caused error in some dataset
+        except ValueError:
+            continue
+        # representative_channels.append(clusters_array[cluster][channel_idx])
+        representative_channels.append(clusters_pad[cluster][channel_idx])
+
+    return representative_channels
+
+
+def slice_from_arr(arr, events, channels=None, window=1, fps_ephys=500, fps_behavior=50, mean=True):
+    window_samples = window * fps_ephys
+    f_ratio = fps_ephys / fps_behavior
+    ret = []
+    if not channels:
+        channels = arr.shape[0]
+        for channel in range(channels):
+            power_per_channel = []
+            for idx in events:
+                idx_in_ephys = f_ratio * idx
+                window_from = np.max([int(idx_in_ephys - window_samples), 0])
+                window_to = int(idx_in_ephys + window_samples)
+                if window_to > arr.shape[-1] - 1:
+                    continue
+                # if window_to == 0:
+                #     window_to = 1
+                bit_power = arr[channel, window_from:window_to]
+                if mean:
+                    power_per_channel.append(bit_power.mean())
+                else:
+                    power_per_channel.append(bit_power)
+            ret.append(np.vstack(power_per_channel))
+
+        if mean:
+            return np.stack(ret)[:, :, 0]
+        else:
+            return np.stack(ret)
+
+    ret = []
+    for channel in channels:
+        power_per_channel = []
+        for idx in events:
+            idx_in_ephys = f_ratio * idx
+            window_from = np.max([int(idx_in_ephys - window_samples), 0])
+            window_to = int(idx_in_ephys + window_samples)
+            if window_to > arr.shape[-1] - 1:
+                continue
+            # window_to = np.min([int(idx_in_ephys + window_samples), arr.shape[-1] - 1])  # make sure
+            # if window_to == 0:
+            #     window_to = 1
+            bit_power = arr[channel, window_from:window_to]
+            if mean:
+                power_per_channel.append(bit_power.mean())
+            else:
+                power_per_channel.append(bit_power)
+        ret.append(np.vstack(power_per_channel))
+
+    if mean:
+        return np.stack(ret)[:, :, 0]
+    else:
+        return np.stack(ret)
+
+
+def epoch_power(power, events, channels=None, window=None):
+    idx_in_ephys = [i * 10 for i in events]
+    ret = []
+    print(events[-1], power.shape[-1])
+    for channel in channels:
+        power_epoch_per_channel = [power[channel, i] for i in idx_in_ephys]
+        ret.append(power_epoch_per_channel)
+    return ret
+
+
+def epoch_data(data_df, channels, events, window=3, f_ephys=500):
+    ret = []
+    idx_ephys = events * 10
+    for i in idx_ephys:
+        crop_from = i - window * f_ephys
+        crop_to = i + window * f_ephys
+        if channels:
+            epoch = data_df[channels].iloc[crop_from:crop_to].to_numpy(copy=True).T
+
+        elif channels == None:
+            epoch = data_df.iloc[crop_from:crop_to].to_numpy(copy=True).T
+
+        ret.append(epoch)
+    return np.array(ret)
+
+
+def plot_epochs(epochs, average=False):
+    t = np.arange(-epochs.shape[-1] / 2, epochs.shape[-1] / 2)
+    epoch_mean = epochs.mean(axis=0)
+    if average == False:
+        for i in range(epoch_mean.shape[0]):
+            plt.plot(t, epoch_mean[i, :], alpha=0.4)
+    if average == True:
+        plt.plot(t, epoch_mean.mean(axis=0))
+    plt.show()
