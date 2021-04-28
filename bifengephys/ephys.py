@@ -31,87 +31,66 @@ def get_ch(data, brain_area):
         return data['info']['ch_names']['ch_' + brain_area]
 
 
-def get_lfp(dataset, brain_area):
+def get_lfp(dataset, brain_area, f_ephys=500):
     print(dataset['lfp']['amplifier_data'].shape)
-    if brain_area == 'mpfc':
-        lfp = dataset['lfp']['amplifier_data'][:len(get_ch(dataset, 'mpfc')), :]
-    if brain_area == 'vhipp':
-        lfp = dataset['lfp']['amplifier_data'][len(get_ch(dataset, 'mpfc')):, :]
-    print(lfp.shape)
-    return lfp
+    ephys_trigger = dataset['info']['ephys_trigger']
+    crop_from = int(f_ephys * ephys_trigger)
 
-
-def get_power(dataset, brain_area, band='theta'):
-    print(dataset['bands'][band]['power'].shape)
-    if brain_area == 'mpfc':
-        power = dataset['bands'][band]['power'][:len(get_ch(dataset, 'mpfc')), :]
-    if brain_area == 'vhipp':
-        power = dataset['bands'][band]['power'][len(get_ch(dataset, 'mpfc')):, :]
-    print(power.shape)
-    return power
-
-
-def get_phase(dataset, brain_area, band='theta'):
-    print(dataset['bands'][band]['phase'].shape)
-    if brain_area == 'mpfc':
-        phase = dataset['bands'][band]['phase'][:len(get_ch(dataset, 'mpfc')), :]
-    if brain_area == 'vhipp':
-        phase = dataset['bands'][band]['phase'][len(get_ch(dataset, 'mpfc')):, :]
-    print(phase.shape)
-    return phase
-
-
-def get_lfp_df(dataset, brain_area):
-    print(dataset['lfp']['amplifier_data'].shape)
     if brain_area == 'all':
-        lfp = dataset['lfp']['amplifier_data']
+        lfp = dataset['lfp']['amplifier_data'][:, crop_from:]
         ch_list = get_ch(dataset, 'all')
         lfp = pd.DataFrame(data=lfp.T, columns=ch_list)
     if brain_area == 'mpfc':
-        lfp = dataset['lfp']['amplifier_data'][:len(get_ch(dataset, 'mpfc')), :]
+        lfp = dataset['lfp']['amplifier_data'][:len(get_ch(dataset, 'mpfc')), crop_from:]
         lfp = pd.DataFrame(data=lfp.T, columns=get_ch(dataset, 'mpfc'))
     if brain_area == 'vhipp':
-        lfp = dataset['lfp']['amplifier_data'][len(get_ch(dataset, 'mpfc')):, :]
+        lfp = dataset['lfp']['amplifier_data'][len(get_ch(dataset, 'mpfc')):, crop_from:]
         lfp = pd.DataFrame(data=lfp.T, columns=get_ch(dataset, 'vhipp'))
     print(lfp.shape)
     return lfp
 
 
-def get_power_df(dataset, brain_area, band='theta'):
+def get_power(dataset, brain_area, band='theta', f_ephys=500):
     print(dataset['lfp']['amplifier_data'].shape)
+    ephys_trigger = dataset['info']['ephys_trigger']
+    crop_from = int(f_ephys * ephys_trigger)
     if brain_area == 'all':
         ch_list = get_ch(dataset, 'all')
-        dat = dataset['bands'][band]['power']
+        dat = dataset['bands'][band]['power'][:, crop_from:]
         power = pd.DataFrame(data=dat.T, columns=ch_list)
 
     if brain_area == 'mpfc':
         ch_list = get_ch(dataset, 'mpfc')
-        dat = dataset['bands'][band]['power'][:len(ch_list), :]
+        dat = dataset['bands'][band]['power'][:len(ch_list), crop_from:]
         power = pd.DataFrame(data=dat.T, columns=ch_list)
 
     if brain_area == 'vhipp':
         ch_list = get_ch(dataset, 'vhipp')
-        dat = dataset['bands'][band]['power'][len(get_ch(dataset, 'mpfc')):, :]
+        dat = dataset['bands'][band]['power'][len(get_ch(dataset, 'mpfc')):, crop_from:]
         power = pd.DataFrame(data=dat.T, columns=ch_list)
 
     print(power.shape)
     return power
 
 
-def get_phase_df(dataset, brain_area, band='theta'):
+def get_phase(dataset, brain_area, band='theta', f_ephys=500):
+    print(dataset['lfp']['amplifier_data'].shape)
+    ephys_trigger = dataset['info']['ephys_trigger']
+    crop_from = int(f_ephys * ephys_trigger)
+
     if brain_area == 'all':
-        dat = dataset['bands'][band]['phase']
         ch_list = get_ch(dataset, 'all')
+        dat = dataset['bands'][band]['phase'][:, crop_from:]
         phase = pd.DataFrame(data=dat.T, columns=ch_list)
 
     if brain_area == 'mpfc':
         ch_list = get_ch(dataset, 'mpfc')
-        dat = dataset['bands'][band]['phase'][:len(ch_list), :]
+        dat = dataset['bands'][band]['phase'][:len(ch_list), crop_from:]
         phase = pd.DataFrame(data=dat.T, columns=ch_list)
 
     if brain_area == 'vhipp':
         ch_list = get_ch(dataset, 'vhipp')
-        dat = dataset['bands'][band]['phase'][len(get_ch(dataset, 'mpfc')):, :]
+        dat = dataset['bands'][band]['phase'][len(get_ch(dataset, 'mpfc')):, crop_from:]
         phase = pd.DataFrame(data=dat.T, columns=ch_list)
 
     print(phase.shape)

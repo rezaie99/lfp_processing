@@ -6,6 +6,7 @@ from sklearn import metrics
 from sklearn.linear_model import LinearRegression
 
 from trajectory_process import traj_process
+from trajectory_process import get_events
 
 sys.path.append('D:\ephys')
 import numpy as np
@@ -120,60 +121,32 @@ def main():
     events = traj_process(animal[session], behavior='ezm', start_time=0, duration=15)
     # # events = pickle.load(open('D:\\ephys\\2021-02-19_mBWfus009_EZM_ephys\ephys_processed\\2021-02-19_mBWfus009_EZM_ephys_results_manually_annotated.pickle',
     # #                           "rb"))
-    f_behavior = 50
-    f_ephys = 500
-    behavior_window_duration = 900
-    ephys_window_duration = 1000
-    #
-    # ### extract overall behavioral open/close frame indices
-    open_idx = [i for i, el in enumerate(
-        events['rois_stats']['roi_at_each_frame'][
-        int(f_behavior * behavior_trigger):int(f_behavior * behavior_trigger) + f_behavior * behavior_window_duration])
-                if
-                el == 'open']
-    close_idx = [i for i, el in enumerate(
-        events['rois_stats']['roi_at_each_frame'][
-        int(f_behavior * behavior_trigger):int(f_behavior * behavior_trigger) + f_behavior * behavior_window_duration])
-                 if
-                 el == 'closed']
-    OTC_idx = np.array(events['transitions']['open_closed_exittime']) - int(
-        f_behavior * behavior_trigger)  ## crop the frame before trigger
+    exclude_keys = ['transitions_per_roi', 'roi_at_each_frame', 'cumulative_time_in_roi', 'avg_time_in_roi']
+    rio_stats = {key: events['rois_stats'][key] for key in events['rois_stats'].keys() if key not in exclude_keys}
+    rio_stats = pd.DataFrame.from_dict(rio_stats)
 
-    prOTC_idx = np.array(events['transitions']['prolonged_open_closed_exittime']) - int(f_behavior * behavior_trigger)
-    prCTO_idx = np.array(events['transitions']['prolonged_closed_open_exittime']) - int(f_behavior * behavior_trigger)
+    f_ephys = 500
+    video_duration = 900
+    ephys_duration = 1000
+
+    # ### extract overall behavioral open/close frame indices
+    open_idx, close_idx, OTC_idx, prOTC_idx, prCTO_idx, nosedip_idx = get_events(events, behavior_trigger, video_duration)
 
     dataset = ephys.load_data(animal[session])
 
     ### --- cluster analysis - returns relevant cluster channels
-    # Todo: the cluster_threshold is sensitive. Can cause error
-
     # mpfc_representative_channels = ephys.explore_clusters(dataset, "mpfc", cluster_threshold=1.2, plot=True)
     # vhipp_representative_channels = ephys.explore_clusters(dataset, "vhipp", cluster_threshold=1.0, plot=True)
-    # mpfc_representative_channels = ephys.explore_clusters2(dataset, "mpfc",  plot=True)
-    # vhipp_representative_channels = ephys.explore_clusters2(dataset, "vhipp", plot=True)
 
+    lfp_mpfc = ephys.column_by_pad(ephys.get_lfp(dataset, 'mpfc'))
+    lfp_vhipp = ephys.column_by_pad(ephys.get_lfp(dataset, 'vhipp'))
 
-    ### --- aligning data, crop the ephys data prior to trigger
-    ephys_trigger = dataset['info']['ephys_trigger']
-    crop_from = int(f_ephys * ephys_trigger)
-    crop_to = int(f_ephys * (ephys_trigger + ephys_window_duration))
-
-    df_lfp_mpfc = ephys.column_by_pad(ephys.get_lfp_df(dataset, 'mpfc'))
-    df_lfp_vhipp = ephys.column_by_pad(ephys.get_lfp_df(dataset, 'vhipp'))
-
-    df_theta_mpfc = ephys.column_by_pad(ephys.get_power_df(dataset, 'mpfc', 'theta'))
-    df_theta_vhipp = ephys.column_by_pad(ephys.get_power_df(dataset, 'vhipp', 'theta'))
-
-    lfp_mpfc = df_lfp_mpfc.iloc[crop_from:crop_to].reset_index(drop=True)
-    lfp_vhipp = df_lfp_vhipp.iloc[crop_from:crop_to].reset_index(drop=True)
-
-    theta_mpfc = df_theta_mpfc.iloc[crop_from:crop_to].reset_index(drop=True)
-    theta_vhipp = df_theta_vhipp.iloc[crop_from:crop_to].reset_index(drop=True)
-
+    theta_mpfc = ephys.column_by_pad(ephys.get_power(dataset, 'mpfc', 'theta'))
+    theta_vhipp = ephys.column_by_pad(ephys.get_power(dataset, 'vhipp', 'theta'))
 
     ## crosscorrelate the channels within each brain area
-    corr_matrix_mpfc = lfp_mpfc.iloc[:10000].corr()
-    corr_matrix_vhipp = lfp_vhipp.iloc[:10000].corr()
+    corr_matrix_mpfc = lfp_mpfc.iloc[5000:10000].corr()
+    corr_matrix_vhipp = lfp_vhipp.iloc[5000:10000].corr()
 
     plt.matshow(corr_matrix_mpfc)
     cb = plt.colorbar()
@@ -190,6 +163,33 @@ def main():
     plt.yticks(range(corr_matrix_vhipp.select_dtypes(['number']).shape[1]),
                corr_matrix_vhipp.select_dtypes(['number']).columns, fontsize=8)
     plt.show()
+
+    ### drop the broken channels with low coherence with neighboring channels
+    bad_ch_mpfc = [6, 10, 23]
+    lfp_mpfc = lfp_mpfc.drop(labels=bad_ch_mpfc, axis=1)
+    corr_matrix_mpfc = lfp_mpfc.iloc[5000:10000].corr()
+
+    ## plot corr_matrix
+    plt.matshow(corr_matrix_mpfc)
+    cb = plt.colorbar()
+    plt.xticks(range(corr_matrix_mpfc.select_dtypes(['number']).shape[1]),
+               corr_matrix_mpfc.select_dtypes(['number']).columns, fontsize=8, rotation=90)
+    plt.yticks(range(corr_matrix_mpfc.select_dtypes(['number']).shape[1]),
+               corr_matrix_mpfc.select_dtypes(['number']).columns, fontsize=8)
+    plt.show()
+
+    bad_ch_vhipp = [44]
+    lfp_vhipp = lfp_vhipp.drop(labels=bad_ch_vhipp, axis=1)
+    corr_matrix_vhipp = lfp_vhipp.iloc[5000:10000].corr()
+
+    plt.matshow(corr_matrix_vhipp)
+    cb = plt.colorbar()
+    plt.xticks(range(corr_matrix_vhipp.select_dtypes(['number']).shape[1]),
+               corr_matrix_vhipp.select_dtypes(['number']).columns, fontsize=8, rotation=90)
+    plt.yticks(range(corr_matrix_vhipp.select_dtypes(['number']).shape[1]),
+               corr_matrix_vhipp.select_dtypes(['number']).columns, fontsize=8)
+    plt.show()
+
 
     mpfc_pad = [2, 17, 25]
     vhipp_pad = [35, 46, 58]
@@ -213,11 +213,18 @@ def main():
     ephys.plot_epochs(lfp_prCTO_mpfc)
     ephys.plot_epochs(lfp_prCTO_vhipp)
 
-    power_prCTO = ephys.epoch_data()
+
+    ## use mne to epoch data
 
 
 
+    ### create event dict for mne raw
 
+
+    frequencies = np.arange(1, 20, 1)
+    power = mne.time_frequency.tfr_morlet(OTC_evoked, n_cycles=2, return_itc=False,
+                                          freqs=frequencies, decim=3)
+    power.plot('A-025')
 
     a = 'break'
 

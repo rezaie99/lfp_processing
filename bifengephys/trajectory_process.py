@@ -713,3 +713,24 @@ def traj_process(session, start_time, duration, behavior=None, bp='head', fps=50
 
     return results
 
+
+def get_events(events, video_trigger, video_duration, f_video=50):
+    crop_from = int(f_video * video_trigger)
+    crop_to = int((video_trigger + video_duration) * f_video)
+
+    open_idx = [i for i, el in enumerate(
+        events['rois_stats']['roi_at_each_frame'][crop_from:crop_to])  ## cropped the frame before trigger
+                if
+                el == 'open']
+
+    close_idx = [i for i, el in enumerate(
+        events['rois_stats']['roi_at_each_frame'][crop_from:crop_to])
+                 if
+                 el == 'closed']
+    OTC_idx = np.array(events['transitions']['open_closed_exittime']) - crop_from  ## crop the frame before trigger
+
+    prOTC_idx = np.array(events['transitions']['prolonged_open_closed_exittime']) - crop_from
+    prCTO_idx = np.array(events['transitions']['prolonged_closed_open_exittime']) - crop_from
+    nosedip_idx = np.array(events['transitions']['nosedip_starttime']) - crop_from
+
+    return open_idx, close_idx, OTC_idx, prOTC_idx, prCTO_idx, nosedip_idx
