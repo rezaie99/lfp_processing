@@ -463,3 +463,88 @@ def plot_epochs(epochs, average=False):
     if average == True:
         plt.plot(t, epoch_mean.mean(axis=0))
     plt.show()
+
+
+def multiple_formatter(denominator=2, number=np.pi, latex='\pi'):
+    def gcd(a, b):
+        while b:
+            a, b = b, a%b
+        return a
+    def _multiple_formatter(x, pos):
+        den = denominator
+        num = np.int(np.rint(den*x/number))
+        com = gcd(num,den)
+        (num,den) = (int(num/com),int(den/com))
+        if den==1:
+            if num==0:
+                return r'$0$'
+            if num==1:
+                return r'$%s$'%latex
+            elif num==-1:
+                return r'$-%s$'%latex
+            else:
+                return r'$%s%s$'%(num,latex)
+        else:
+            if num==1:
+                return r'$\frac{%s}{%s}$'%(latex,den)
+            elif num==-1:
+                return r'$\frac{-%s}{%s}$'%(latex,den)
+            else:
+                return r'$\frac{%s%s}{%s}$'%(num,latex,den)
+    return _multiple_formatter
+
+
+def plot_phase_coh(data, band='theta', mpfc_index=0, srate=500, tstart=30, twin=600, axs=None):
+    '''
+    plot representative histogram of theta phase differences in a specific period
+    time period defined by tstart (in seconds) and twin (in seconds)
+    one mPFC channel against all vHPC channels (30)
+    '''
+    start = int(tstart * srate)
+    end = int((tstart + twin) * srate)
+
+    chlist_mpfc = get_ch(data, 'mpfc')
+    chlist_vhipp = get_ch(data, 'vhipp')
+
+    phase_vhipp = get_phase(data, brain_area='vhipp', band=band)
+    phase_mpfc = get_phase(data, brain_area='mpfc', band=band)
+    phase_vhipp = np.array(phase_vhipp)
+    phase_mpfc = np.array(phase_mpfc)
+
+    if axs == None:
+        fig, axs = plt.subplots(5, len(chlist_vhipp)//5, figsize=(6*6, 12*5), tight_layout=True, sharey=True)
+
+    FWHM = []
+
+    for i in range(len(chlist_vhipp)):
+        plti = i//6
+        pltj = i-plti*6
+
+        phase_diff = phase_mpfc[:, mpfc_index] - phase_vhipp[:, i]
+
+        add_pos = np.where(np.logical_and(-2*np.pi <= phase_diff, phase_diff < -np.pi))
+        phase_diff[add_pos] += 2*np.pi
+        sub_pos = np.where(np.logical_and(np.pi <= phase_diff, phase_diff < 2*np.pi))
+        phase_diff[sub_pos] -= 2*np.pi
+
+        n,bins,patches = axs[plti, pltj].hist(phase_diff[start:end], bins=round((end-start)/srate*0.5), alpha=1)
+        axs[plti, pltj].set_title('mPFC'+str(chlist_mpfc[mpfc_index])+'-vHPC'+str(chlist_vhipp[i]), fontsize=16)
+        axs[plti, pltj].xaxis.set_major_locator(plt.MultipleLocator(np.pi))
+        axs[plti, pltj].xaxis.set_major_formatter(plt.FuncFormatter(multiple_formatter()))
+        axs[plti, pltj].grid(True)
+
+        peak_value = np.max(n)
+        half_range = np.where(n>peak_value/2)
+        FWHM.append(bins[np.max(half_range)]-bins[np.min(half_range)])
+
+    # Create a big subplot
+    ax = fig.add_subplot(111, frameon=False)
+    # hide tick and tick label of the big axes
+    plt.tick_params(labelcolor='none', top='off', bottom='off', left='off', right='off')
+
+    ax.set_xlabel('Phase lag (rad)', labelpad=18, fontsize=14) # Use argument `labelpad` to move label downwards.
+    ax.set_ylabel('Counts', labelpad=18, fontsize=14)
+
+    plt.show()
+
+    return FWHM

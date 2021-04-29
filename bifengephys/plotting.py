@@ -91,3 +91,4 @@ def plot_mean_ci(data, duration=300):
     ci95 = sms.DescrStatsW(data).tconfint_mean()
     plt.fill_between(t[:duration * srate], ci95[0][:duration * srate], ci95[1][:duration * srate], alpha=0.3)
     plt.show()
+    
