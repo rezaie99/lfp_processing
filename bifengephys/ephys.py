@@ -494,7 +494,7 @@ def multiple_formatter(denominator=2, number=np.pi, latex='\pi'):
     return _multiple_formatter
 
 
-def plot_phase_coh(data, fname, band='theta', mpfc_index=0, srate=500, tstart=30, twin=600, axs=None):
+def plot_phase_coh(data, fname, band='theta', mpfc_index=0, srate=500, tstart=30, twin=600, axs=None, showfig=True):
     '''
     plot representative histogram of theta phase differences in a specific period
     time period defined by tstart (starting time, in seconds) and twin (length of time window, in seconds)
@@ -505,38 +505,25 @@ def plot_phase_coh(data, fname, band='theta', mpfc_index=0, srate=500, tstart=30
     start = int(tstart * srate)
     end = int((tstart + twin) * srate)
 
-    pad_to_array_indx, pad_to_array_text = pad_to_array()
-    sorted_array = [text.split(' ')[-1] for text in pad_to_array_text]
-    sorted_pads = [text.split('=')[0] for text in pad_to_array_text]
-
-    chlist_mpfc = get_ch(data, 'mpfc')
-    chlist_vhipp = get_ch(data, 'vhipp')
-    indx_vhipp = []
-    for ch in chlist_vhipp:
-        if sorted_array.count(ch) > 0:
-            indx_vhipp.append(sorted_array.index(ch))
-        else:
-            indx_vhipp.append('nan')
-    indx_vhipp = sorted(list(filter(lambda indx: indx != 'nan', indx_vhipp)))
-    # print("Plot order of " + str(len(indx_vhipp)) + " vHipp channels")
-    # print([pad_to_array_text[i] for i in indx_vhipp])
-
-    phase_vhipp = get_phase(data, brain_area='vhipp', band=band)
-    phase_mpfc = get_phase(data, brain_area='mpfc', band=band)
-    phase_vhipp = np.array(phase_vhipp)
-    phase_mpfc = np.array(phase_mpfc)
+    phase_mpfc = column_by_pad(get_phase(data, 'mpfc', 'theta'))
+    phase_vhipp = column_by_pad(get_phase(data, 'vhipp', 'theta'))
+    
+    mpfc_pads = np.array(phase_mpfc.columns)
+    vhipp_pads = np.array(phase_vhipp.columns)
 
     if axs == None:
-        fig, axs = plt.subplots(5, len(indx_vhipp)//5, figsize=(6*6, 12*5), tight_layout=True, sharey=True)
+        fig, axs = plt.subplots(5, len(phase_vhipp.columns)//5, 
+            figsize=(6*6, 12*5), tight_layout=True, sharey=True)
 
     FWHM = []
+    mpfc_padid = mpfc_pads[mpfc_index]
 
-    for i in range(len(indx_vhipp)):
-        vhipp_index = chlist_vhipp.index(sorted_array[indx_vhipp[i]])
+    for i in range(len(vhipp_pads)):
+        vhipp_padid = vhipp_pads[i]
         plti = i//6
         pltj = i-plti*6
 
-        phase_diff = phase_mpfc[:, mpfc_index] - phase_vhipp[:, vhipp_index]
+        phase_diff = np.array(phase_mpfc[mpfc_padid]) - np.array(phase_vhipp[vhipp_padid])
 
         add_pos = np.where(np.logical_and(-2*np.pi <= phase_diff, phase_diff < -np.pi))
         phase_diff[add_pos] += 2*np.pi
@@ -544,7 +531,7 @@ def plot_phase_coh(data, fname, band='theta', mpfc_index=0, srate=500, tstart=30
         phase_diff[sub_pos] -= 2*np.pi
 
         n,bins,patches = axs[plti, pltj].hist(phase_diff[start:end], bins=round((end-start)/srate*0.5), alpha=1)
-        axs[plti, pltj].set_title('mPFC'+sorted_pads[sorted_array.index(chlist_mpfc[mpfc_index])]+'-vHPC'+sorted_pads[indx_vhipp[i]], fontsize=16)
+        axs[plti, pltj].set_title('mPFC_pad'+str(mpfc_padid)+'-vHPC_pad'+str(vhipp_padid), fontsize=16)
         axs[plti, pltj].xaxis.set_major_locator(plt.MultipleLocator(np.pi))
         axs[plti, pltj].xaxis.set_major_formatter(plt.FuncFormatter(multiple_formatter()))
         axs[plti, pltj].grid(True)
