@@ -74,7 +74,7 @@ def get_power(dataset, brain_area, band='theta', f_ephys=500):
 
 
 def get_phase(dataset, brain_area, band='theta', f_ephys=500):
-    print(dataset['lfp']['amplifier_data'].shape)
+    # print(dataset['lfp']['amplifier_data'].shape)
     ephys_trigger = dataset['info']['ephys_trigger']
     crop_from = int(f_ephys * ephys_trigger)
 
@@ -93,7 +93,7 @@ def get_phase(dataset, brain_area, band='theta', f_ephys=500):
         dat = dataset['bands'][band]['phase'][len(get_ch(dataset, 'mpfc')):, crop_from:]
         phase = pd.DataFrame(data=dat.T, columns=ch_list)
 
-    print(phase.shape)
+    # print(phase.shape)
     return phase
 
 
@@ -494,17 +494,31 @@ def multiple_formatter(denominator=2, number=np.pi, latex='\pi'):
     return _multiple_formatter
 
 
-def plot_phase_coh(data, band='theta', mpfc_index=0, srate=500, tstart=30, twin=600, axs=None):
+def plot_phase_coh(data, fname, band='theta', mpfc_index=0, srate=500, tstart=30, twin=600, axs=None):
     '''
     plot representative histogram of theta phase differences in a specific period
-    time period defined by tstart (in seconds) and twin (in seconds)
+    time period defined by tstart (starting time, in seconds) and twin (length of time window, in seconds)
     one mPFC channel against all vHPC channels (30)
+    returns an array of all plots' full width half maximum (FWHM) (unit: radians)
+    number of bins is selected as 
     '''
     start = int(tstart * srate)
     end = int((tstart + twin) * srate)
 
+    pad_to_array_indx, pad_to_array_text = pad_to_array()
+    sorted_array = [text.split(' ')[-1] for text in pad_to_array_text]
+
     chlist_mpfc = get_ch(data, 'mpfc')
     chlist_vhipp = get_ch(data, 'vhipp')
+    indx_vhipp = []
+    for ch in chlist_vhipp:
+        if sorted_array.count(ch) > 0:
+            indx_vhipp.append(sorted_array.index(ch))
+        else:
+            indx_vhipp.append('nan')
+    indx_vhipp = sorted(list(filter(lambda indx: indx != 'nan', indx_vhipp)))
+    # print("Plot order of " + str(len(indx_vhipp)) + " vHipp channels")
+    # print([pad_to_array_text[i] for i in indx_vhipp])
 
     phase_vhipp = get_phase(data, brain_area='vhipp', band=band)
     phase_mpfc = get_phase(data, brain_area='mpfc', band=band)
@@ -512,15 +526,16 @@ def plot_phase_coh(data, band='theta', mpfc_index=0, srate=500, tstart=30, twin=
     phase_mpfc = np.array(phase_mpfc)
 
     if axs == None:
-        fig, axs = plt.subplots(5, len(chlist_vhipp)//5, figsize=(6*6, 12*5), tight_layout=True, sharey=True)
+        fig, axs = plt.subplots(5, len(indx_vhipp)//5, figsize=(6*6, 12*5), tight_layout=True, sharey=True)
 
     FWHM = []
 
-    for i in range(len(chlist_vhipp)):
+    for i in range(len(indx_vhipp)):
+        vhipp_index = chlist_vhipp.index(sorted_array[indx_vhipp[i]])
         plti = i//6
         pltj = i-plti*6
 
-        phase_diff = phase_mpfc[:, mpfc_index] - phase_vhipp[:, i]
+        phase_diff = phase_mpfc[:, mpfc_index] - phase_vhipp[:, vhipp_index]
 
         add_pos = np.where(np.logical_and(-2*np.pi <= phase_diff, phase_diff < -np.pi))
         phase_diff[add_pos] += 2*np.pi
@@ -528,10 +543,11 @@ def plot_phase_coh(data, band='theta', mpfc_index=0, srate=500, tstart=30, twin=
         phase_diff[sub_pos] -= 2*np.pi
 
         n,bins,patches = axs[plti, pltj].hist(phase_diff[start:end], bins=round((end-start)/srate*0.5), alpha=1)
-        axs[plti, pltj].set_title('mPFC'+str(chlist_mpfc[mpfc_index])+'-vHPC'+str(chlist_vhipp[i]), fontsize=16)
+        axs[plti, pltj].set_title('mPFC'+str(chlist_mpfc[mpfc_index])+'-vHPC'+str(chlist_vhipp[vhipp_index]), fontsize=16)
         axs[plti, pltj].xaxis.set_major_locator(plt.MultipleLocator(np.pi))
         axs[plti, pltj].xaxis.set_major_formatter(plt.FuncFormatter(multiple_formatter()))
         axs[plti, pltj].grid(True)
+        axs[plti, pltj].tick_params(axis='both', which='major', labelsize=10)
 
         peak_value = np.max(n)
         half_range = np.where(n>peak_value/2)
@@ -544,7 +560,7 @@ def plot_phase_coh(data, band='theta', mpfc_index=0, srate=500, tstart=30, twin=
 
     ax.set_xlabel('Phase lag (rad)', labelpad=18, fontsize=14) # Use argument `labelpad` to move label downwards.
     ax.set_ylabel('Counts', labelpad=18, fontsize=14)
-
+    plt.savefig(fname)
     plt.show()
 
     return FWHM

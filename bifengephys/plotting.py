@@ -15,7 +15,7 @@ def plot_psd(data,
              show_plot=True):
     srate = srate
     start = tstart * srate
-    end = (start + twin) * srate
+    end = (tstart + twin) * srate
     fmax = fmax
     nperseg = 1024
     noverlap = int(nperseg * 0.8)
