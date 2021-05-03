@@ -507,6 +507,7 @@ def plot_phase_coh(data, fname, band='theta', mpfc_index=0, srate=500, tstart=30
 
     pad_to_array_indx, pad_to_array_text = pad_to_array()
     sorted_array = [text.split(' ')[-1] for text in pad_to_array_text]
+    sorted_pads = [text.split('=')[0] for text in pad_to_array_text]
 
     chlist_mpfc = get_ch(data, 'mpfc')
     chlist_vhipp = get_ch(data, 'vhipp')
@@ -543,7 +544,7 @@ def plot_phase_coh(data, fname, band='theta', mpfc_index=0, srate=500, tstart=30
         phase_diff[sub_pos] -= 2*np.pi
 
         n,bins,patches = axs[plti, pltj].hist(phase_diff[start:end], bins=round((end-start)/srate*0.5), alpha=1)
-        axs[plti, pltj].set_title('mPFC'+str(chlist_mpfc[mpfc_index])+'-vHPC'+str(chlist_vhipp[vhipp_index]), fontsize=16)
+        axs[plti, pltj].set_title('mPFC'+sorted_pads[sorted_array.index(chlist_mpfc[mpfc_index])]+'-vHPC'+sorted_pads[indx_vhipp[i]], fontsize=16)
         axs[plti, pltj].xaxis.set_major_locator(plt.MultipleLocator(np.pi))
         axs[plti, pltj].xaxis.set_major_formatter(plt.FuncFormatter(multiple_formatter()))
         axs[plti, pltj].grid(True)
