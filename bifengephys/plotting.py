@@ -93,7 +93,7 @@ def plot_mean_ci(data, duration=300):
     plt.show()
     
 
-def plot_phase_coh_pairs(data, animal, session, savedir, band='theta', srate=500, tstart=30, twin=600, axs=None, showfig=True):
+def plot_phase_coh_pairs(data, animal, session, savedir, band='theta', srate=500, tstart=30, twin=600, nbins=60, axs=None, showfig=True):
     phase_mpfc = ephys.column_by_pad(ephys.get_phase(data, 'mpfc', 'theta'))
     phase_vhipp = ephys.column_by_pad(ephys.get_phase(data, 'vhipp', 'theta'))
     mpfc_pads = np.array(phase_mpfc.columns)
@@ -104,7 +104,7 @@ def plot_phase_coh_pairs(data, animal, session, savedir, band='theta', srate=500
         FWHM = ephys.plot_phase_coh(data, 
                                     fname=savedir+animal[session]+'_mPFC_pad'+str(mpfc_pads[i])+'_phasecoh.jpg', 
                                     band='theta', mpfc_index=i, srate=srate, 
-                                    tstart=tstart, twin=twin)
+                                    tstart=tstart, twin=twin, nbins=nbins)
         FWHMs.append(FWHM)
 
     FWHMs_np = np.array(FWHMs)

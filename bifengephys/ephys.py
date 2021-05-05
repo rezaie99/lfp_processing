@@ -494,7 +494,7 @@ def multiple_formatter(denominator=2, number=np.pi, latex='\pi'):
     return _multiple_formatter
 
 
-def plot_phase_coh(data, fname, band='theta', mpfc_index=0, srate=500, tstart=30, twin=600, axs=None, showfig=True):
+def plot_phase_coh(data, fname, band='theta', mpfc_index=0, srate=500, tstart=30, twin=600, nbins=60, axs=None, showfig=True):
     '''
     plot representative histogram of theta phase differences in a specific period
     time period defined by tstart (starting time, in seconds) and twin (length of time window, in seconds)
@@ -506,7 +506,9 @@ def plot_phase_coh(data, fname, band='theta', mpfc_index=0, srate=500, tstart=30
     end = int((tstart + twin) * srate)
 
     phase_mpfc = column_by_pad(get_phase(data, 'mpfc', 'theta'))
+    power_mpfc = column_by_pad(get_power(data, 'mpfc', 'theta'))
     phase_vhipp = column_by_pad(get_phase(data, 'vhipp', 'theta'))
+    power_vhipp = column_by_pad(get_power(data, 'vhipp', 'theta'))
     
     mpfc_pads = np.array(phase_mpfc.columns)
     vhipp_pads = np.array(phase_vhipp.columns)
@@ -520,17 +522,26 @@ def plot_phase_coh(data, fname, band='theta', mpfc_index=0, srate=500, tstart=30
 
     for i in range(len(vhipp_pads)):
         vhipp_padid = vhipp_pads[i]
+        power_vhipp_curr = np.array(power_vhipp[vhipp_padid])
+        power_vhipp_mean = np.mean(power_vhipp_curr)
+        exceedmean = np.where(power_vhipp_curr > power_vhipp_mean)
+        positions = exceedmean[0]
+        filtered = (positions[np.logical_and(positions>=start, positions<end)],)
+        # print("%d out of %d selected for plotting" % (len(power_vhipp_curr[exceedmean]), len(power_vhipp_curr)))
+
         plti = i//6
         pltj = i-plti*6
 
         phase_diff = np.array(phase_mpfc[mpfc_padid]) - np.array(phase_vhipp[vhipp_padid])
+        phase_diff_filtered = phase_diff[filtered]
+        # print(len(phase_diff_filtered),' ', len(phase_diff))
 
         add_pos = np.where(np.logical_and(-2*np.pi <= phase_diff, phase_diff < -np.pi))
         phase_diff[add_pos] += 2*np.pi
         sub_pos = np.where(np.logical_and(np.pi <= phase_diff, phase_diff < 2*np.pi))
         phase_diff[sub_pos] -= 2*np.pi
 
-        n,bins,patches = axs[plti, pltj].hist(phase_diff[start:end], bins=round((end-start)/srate*0.5), alpha=1)
+        n,bins,patches = axs[plti, pltj].hist(phase_diff[start:end], bins=nbins, alpha=1)
         axs[plti, pltj].set_title('mPFC_pad'+str(mpfc_padid)+'-vHPC_pad'+str(vhipp_padid), fontsize=16)
         axs[plti, pltj].xaxis.set_major_locator(plt.MultipleLocator(np.pi))
         axs[plti, pltj].xaxis.set_major_formatter(plt.FuncFormatter(multiple_formatter()))
