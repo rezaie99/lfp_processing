@@ -591,10 +591,17 @@ def plot_crosscorr(data, fname, band='theta', mpfc_index=0, srate=500, tstart=30
 
         power_vhipp_curr = np.array(power_vhipp[vhipp_padid])[start:end]
         power_mpfc_curr = np.array(power_mpfc[mpfc_padid])[start:end]
+        power_vhipp_mean = np.mean(power_vhipp_curr)
+        exceedmean = np.where(power_vhipp_curr > power_vhipp_mean)
+
+        power_vhipp_filtered = power_vhipp_curr[exceedmean]
+        power_mpfc_filtered = power_mpfc_curr[exceedmean]
+
+        print('%d out of %d time points selected' % (len(power_vhipp_filtered), len(power_vhipp_curr)))
         
-        corr = correlate(power_mpfc_curr, power_vhipp_curr)
+        corr = correlate(power_mpfc_filtered, power_vhipp_filtered)
         corr /= np.max(corr)
-        lags = correlation_lags(len(power_mpfc_curr), len(power_vhipp_curr)) / srate * 1000
+        lags = correlation_lags(len(power_mpfc_filtered), len(power_vhipp_filtered)) / srate * 1000
         lag = lags[np.argmax(corr)]
 
         axs[plti, pltj].set_title('mPFC_pad'+str(mpfc_padid)+'-vHPC_pad'+str(vhipp_padid), fontsize=16)
