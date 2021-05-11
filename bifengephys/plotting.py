@@ -94,8 +94,8 @@ def plot_mean_ci(data, duration=300):
     
 
 def plot_phase_coh_pairs(data, animal, session, savedir, band='theta', srate=500, tstart=30, twin=600, nbins=60, axs=None, showfig=True):
-    phase_mpfc = ephys.column_by_pad(ephys.get_phase(data, 'mpfc', 'theta'))
-    phase_vhipp = ephys.column_by_pad(ephys.get_phase(data, 'vhipp', 'theta'))
+    phase_mpfc = ephys.column_by_pad(ephys.get_phase(data, 'mpfc', band))
+    phase_vhipp = ephys.column_by_pad(ephys.get_phase(data, 'vhipp', band))
     mpfc_pads = np.array(phase_mpfc.columns)
     vhipp_pads = np.array(phase_vhipp.columns)
 
@@ -137,3 +137,30 @@ def plot_phase_coh_pairs(data, animal, session, savedir, band='theta', srate=500
     plt.ylabel('mPFC')
     plt.savefig(savedir+animal[session]+'_phasecoh_fwhms.jpg')
     plt.show()
+
+
+def plot_crosscorr_pairs(data, animal, session, savedir, band='theta', srate=500, tstart=30, twin=600, axs=None, showfig=True):
+    power_mpfc = ephys.column_by_pad(ephys.get_power(data, 'mpfc', band))
+    power_vhipp = ephys.column_by_pad(ephys.get_power(data, 'vhipp', band))
+    mpfc_pads = np.array(power_mpfc.columns)
+    vhipp_pads = np.array(power_vhipp.columns)
+
+    mpfc_lags = []
+    for i in range(len(mpfc_pads)):
+        mpfc_lags_curr = ephys.plot_crosscorr(data, 
+                                    fname=savedir+animal[session]+'_mPFC_pad'+str(mpfc_pads[i])+'_power_crosscorr.jpg', 
+                                    band=band, mpfc_index=i, srate=srate, 
+                                    tstart=tstart, twin=twin)
+        mpfc_lags.append(mpfc_lags_curr)
+        plt.figure(figsize=(6,12))
+        bin_edges = np.linspace(-50, 50, num=50)
+        n, bins, patches = plt.hist(mpfc_lags_curr, bin_edges, histtype='stepfilled')
+        plt.xlim(-50, 50)
+        plt.xticks(fontsize=14)
+        plt.yticks(fontsize=14)
+        plt.vlines(0,0,8, colors='r', linestyles='dashed')
+        plt.xlabel('Lag (ms)', fontsize=18)
+        plt.ylabel('counts', fontsize=18)
+        plt.title('vHPC channels-mPFC_pad'+str(mpfc_pads[i])+' lag distribution', fontsize=20)
+        plt.savefig(savedir+animal[session]+'_mPFC_pad'+str(mpfc_pads[i])+'_lag_distrib.jpg')
+        plt.show()

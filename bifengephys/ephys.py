@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 from scipy.cluster import hierarchy
 from scipy.cluster.hierarchy import fcluster
+from scipy.signal import correlate, correlation_lags
 from sklearn.cluster import KMeans
 import os
 import sys
@@ -51,7 +52,7 @@ def get_lfp(dataset, brain_area, f_ephys=500):
 
 
 def get_power(dataset, brain_area, band='theta', f_ephys=500):
-    print(dataset['lfp']['amplifier_data'].shape)
+    # print(dataset['lfp']['amplifier_data'].shape)
     ephys_trigger = dataset['info']['ephys_trigger']
     crop_from = int(f_ephys * ephys_trigger)
     if brain_area == 'all':
@@ -69,7 +70,7 @@ def get_power(dataset, brain_area, band='theta', f_ephys=500):
         dat = dataset['bands'][band]['power'][len(get_ch(dataset, 'mpfc')):, crop_from:]
         power = pd.DataFrame(data=dat.T, columns=ch_list)
 
-    print(power.shape)
+    # print(power.shape)
     return power
 
 
@@ -505,10 +506,10 @@ def plot_phase_coh(data, fname, band='theta', mpfc_index=0, srate=500, tstart=30
     start = int(tstart * srate)
     end = int((tstart + twin) * srate)
 
-    phase_mpfc = column_by_pad(get_phase(data, 'mpfc', 'theta'))
-    power_mpfc = column_by_pad(get_power(data, 'mpfc', 'theta'))
-    phase_vhipp = column_by_pad(get_phase(data, 'vhipp', 'theta'))
-    power_vhipp = column_by_pad(get_power(data, 'vhipp', 'theta'))
+    phase_mpfc = column_by_pad(get_phase(data, 'mpfc', band))
+    power_mpfc = column_by_pad(get_power(data, 'mpfc', band))
+    phase_vhipp = column_by_pad(get_phase(data, 'vhipp', band))
+    power_vhipp = column_by_pad(get_power(data, 'vhipp', band))
     
     mpfc_pads = np.array(phase_mpfc.columns)
     vhipp_pads = np.array(phase_vhipp.columns)
@@ -563,3 +564,51 @@ def plot_phase_coh(data, fname, band='theta', mpfc_index=0, srate=500, tstart=30
     plt.show()
 
     return FWHM
+
+
+def plot_crosscorr(data, fname, band='theta', mpfc_index=0, srate=500, tstart=30, twin=600, axs=None, showfig=True):
+    start = int(tstart * srate)
+    end = int((tstart + twin) * srate)
+
+    power_mpfc = column_by_pad(get_power(data, 'mpfc', band))
+    power_vhipp = column_by_pad(get_power(data, 'vhipp', band))
+
+    mpfc_pads = np.array(power_mpfc.columns)
+    vhipp_pads = np.array(power_vhipp.columns)
+
+    if axs == None:
+        fig, axs = plt.subplots(5, len(power_vhipp.columns)//5, 
+            figsize=(6*6, 12*5), tight_layout=True)
+
+    lags_currmpfc = []
+    mpfc_padid = mpfc_pads[mpfc_index]
+
+    for i in range(len(vhipp_pads)):
+        vhipp_padid = vhipp_pads[i]
+
+        plti = i//6
+        pltj = i-plti*6
+
+        power_vhipp_curr = np.array(power_vhipp[vhipp_padid])[start:end]
+        power_mpfc_curr = np.array(power_mpfc[mpfc_padid])[start:end]
+        
+        corr = correlate(power_mpfc_curr, power_vhipp_curr)
+        corr /= np.max(corr)
+        lags = correlation_lags(len(power_mpfc_curr), len(power_vhipp_curr)) / srate * 1000
+        lag = lags[np.argmax(corr)]
+
+        axs[plti, pltj].set_title('mPFC_pad'+str(mpfc_padid)+'-vHPC_pad'+str(vhipp_padid), fontsize=16)
+        axs[plti, pltj].scatter([lag], corr[np.argmax(corr)], color='red', s=50)
+        axs[plti, pltj].axvline(x=0, color='k', linestyle='--')
+        axs[plti, pltj].plot(lags, corr)
+        axs[plti, pltj].tick_params(axis='both', which='major', labelsize=14)
+        axs[plti, pltj].set_xlim(-40,40)
+        axs[plti, pltj].set_xlabel('Lag (ms)', fontsize=18)
+        axs[plti, pltj].set_ylabel('vHPC-mPFC theta power crosscorr', fontsize=18)
+
+        lags_currmpfc.append(lag)
+
+    plt.savefig(fname)
+    plt.show()
+
+    return lags_currmpfc
