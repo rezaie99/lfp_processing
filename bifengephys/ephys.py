@@ -533,16 +533,18 @@ def plot_phase_coh(data, fname, band='theta', mpfc_index=0, srate=500, tstart=30
         plti = i//6
         pltj = i-plti*6
 
-        phase_diff = np.array(phase_mpfc[mpfc_padid]) - np.array(phase_vhipp[vhipp_padid])
+        phase_diff = np.unwrap(np.array(phase_mpfc[mpfc_padid])) - np.unwrap(np.array(phase_vhipp[vhipp_padid]))
         phase_diff_filtered = phase_diff[filtered]
+        phase_diff_filtered = (phase_diff_filtered + np.pi) % (2.0 * np.pi) - np.pi
         # print(len(phase_diff_filtered),' ', len(phase_diff))
 
-        add_pos = np.where(np.logical_and(-2*np.pi <= phase_diff, phase_diff < -np.pi))
-        phase_diff[add_pos] += 2*np.pi
-        sub_pos = np.where(np.logical_and(np.pi <= phase_diff, phase_diff < 2*np.pi))
-        phase_diff[sub_pos] -= 2*np.pi
+        # add_pos = np.where(np.logical_and(-2*np.pi <= phase_diff_filtered, phase_diff_filtered < -np.pi))
+        # phase_diff_filtered[add_pos] += 2*np.pi
+        # sub_pos = np.where(np.logical_and(np.pi <= phase_diff_filtered, phase_diff_filtered < 2*np.pi))
+        # phase_diff_filtered[sub_pos] -= 2*np.pi
+        # phase_diff_filtered = np.unwrap(phase_diff_filtered)
 
-        n,bins,patches = axs[plti, pltj].hist(phase_diff[start:end], bins=nbins, alpha=1)
+        n,bins,patches = axs[plti, pltj].hist(phase_diff_filtered, bins=nbins, alpha=1)
         axs[plti, pltj].set_title('mPFC_pad'+str(mpfc_padid)+'-vHPC_pad'+str(vhipp_padid), fontsize=16)
         axs[plti, pltj].xaxis.set_major_locator(plt.MultipleLocator(np.pi))
         axs[plti, pltj].xaxis.set_major_formatter(plt.FuncFormatter(multiple_formatter()))
