@@ -707,6 +707,8 @@ def traj_process(session, start_time, duration, behavior=None, bp='head', fps=50
     #         'rois_stats': rois_stats,
     #         'transitions': transitions})
 
+    # if behavior == 'epm':
+
     if behavior == 'ezm':
         rois_stats, transitions = find_transition_ezm(traj_x, traj_y, start_time, duration, spd, fps)
         results.update({'rois_stats': rois_stats, 'transitions': transitions})
