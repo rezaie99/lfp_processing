@@ -56,8 +56,8 @@ def calib_traj(traj_df, start_time, duration, fps=50, bp='head', XYMAX=400, THRL
     # index of the first frame for evaluation
     start_frame = int(start_time * fps)
     # index of the last frame for evaluation
-    # duration is time in minutes
-    end_frame = min(int(start_frame + duration * 60 * fps), length)
+    # duration is time in seconds
+    end_frame = min(int(start_frame + duration * fps), length)
     print('frames to process:', end_frame - start_frame)
 
     # process data point: (A) if the distance of current point to the previous one exceeds a certain threshold;
@@ -90,7 +90,9 @@ def calib_traj(traj_df, start_time, duration, fps=50, bp='head', XYMAX=400, THRL
     bd_y_new = bd_y_new.interpolate(method='linear', limit_direction='both')
     print("edited " + str(num_processed) + " data points")
 
-    plt.figure(figsize=(5, 5))
+    plt.figure(figsize=(6, 6))
+    plt.xlim(0, XYMAX)
+    plt.ylim(0, XYMAX)
     plt.plot(bd_x[start_frame:end_frame], bd_y[start_frame:end_frame], label='unprocessed trajectory')
     plt.plot(bd_x_new[start_frame:end_frame], bd_y_new[start_frame:end_frame], alpha=0.4, label='processed trajectory')
     plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0., fontsize=12)
@@ -112,8 +114,8 @@ def calculate_speed_acc(traj_x, traj_y, start_time, duration, fps, move_cutoff=5
     # index of the first frame for evaluation
     start_frame = int(start_time * fps)
     # index of the last frame for evaluation
-    # duration is time in minutes
-    end_frame = min(int(start_frame + duration * 60 * fps), length)
+    # duration is time in seconds
+    end_frame = min(int(start_frame + duration * fps), length)
 
     accumulated_distance = []
     inst_distance = []
@@ -166,33 +168,39 @@ def create_rois_epm(epm_coors):
     return rois
 
 
-def plot_traj_roi(traj_x, traj_y, rois):
-    fig, ax = plt.subplots(1, figsize=(8, 8))
+def plot_traj_roi_epm(traj_x, traj_y, rois, start_frame, end_frame):
+    fig, ax = plt.subplots(1, figsize=(6, 6))
 
     # plot trajectory + bounding boxes for rois
-    plt.plot(traj_x, traj_y, '-', linewidth=.2, alpha=.4)
+    plt.plot(traj_x[start_frame:end_frame], traj_y[start_frame:end_frame], '-', linewidth=.2, alpha=.6)
 
-    rect = patches.Rectangle(rois['center'].topleft, rois['center'].bottomright[0] - rois['center'].topleft[0],
-                             rois['center'].bottomright[1] - rois['center'].topleft[1], linewidth=2, edgecolor='purple',
+    coords = np.array(rois['center'].exterior.coords.xy).T
+    polygon = patches.Polygon(coords, linewidth=2, edgecolor='purple',
                              facecolor='none')
-    ax.add_patch(rect)
-    rect = patches.Rectangle(rois['cornertl'].topleft, rois['cornertl'].bottomright[0] - rois['cornertl'].topleft[0],
-                             rois['cornertl'].bottomright[1] - rois['cornertl'].topleft[1], linewidth=2,
-                             edgecolor='orange', facecolor='none')
-    ax.add_patch(rect)
-    rect = patches.Rectangle(rois['cornertr'].topleft, rois['cornertr'].bottomright[0] - rois['cornertr'].topleft[0],
-                             rois['cornertr'].bottomright[1] - rois['cornertr'].topleft[1], linewidth=2,
-                             edgecolor='orange', facecolor='none')
-    ax.add_patch(rect)
-    rect = patches.Rectangle(rois['cornerbl'].topleft, rois['cornerbl'].bottomright[0] - rois['cornerbl'].topleft[0],
-                             rois['cornerbl'].bottomright[1] - rois['cornerbl'].topleft[1], linewidth=2,
-                             edgecolor='orange', facecolor='none')
-    ax.add_patch(rect)
-    rect = patches.Rectangle(rois['cornerbr'].topleft, rois['cornerbr'].bottomright[0] - rois['cornerbr'].topleft[0],
-                             rois['cornerbr'].bottomright[1] - rois['cornerbr'].topleft[1], linewidth=2,
-                             edgecolor='orange', facecolor='none')
-    ax.add_patch(rect)
-    plt.ylim(0, 350)
+    ax.add_patch(polygon)
+
+    coords = np.array(rois['openleft'].exterior.coords.xy).T
+    polygon = patches.Polygon(coords, linewidth=2, edgecolor='orange',
+                             facecolor='none')
+    ax.add_patch(polygon)
+
+    coords = np.array(rois['openright'].exterior.coords.xy).T
+    polygon = patches.Polygon(coords, linewidth=2, edgecolor='orange',
+                             facecolor='none')
+    ax.add_patch(polygon)
+
+    coords = np.array(rois['closedtop'].exterior.coords.xy).T
+    polygon = patches.Polygon(coords, linewidth=2, edgecolor='green',
+                             facecolor='none')
+    ax.add_patch(polygon)
+
+    coords = np.array(rois['closedbottom'].exterior.coords.xy).T
+    polygon = patches.Polygon(coords, linewidth=2, edgecolor='green',
+                             facecolor='none')
+    ax.add_patch(polygon)
+
+    plt.xlim(0, 450)
+    plt.ylim(0, 450)
     plt.show()
 
 
@@ -753,18 +761,22 @@ def find_transition_oft(traj_x, traj_y, fps=50):
     return rois_stats, transitions
 
 
-def find_transition_epm(traj_x, traj_y, epm_coors, start_time, duration, spd, fps=50):
+def analyze_trajectory_epm(traj_x, traj_y, epm_coors, start_time, duration, spd, fps=50):
     # ROI Analysis (EZM)
     length = len(np.array(traj_x))
     # start_time unit: seconds
     # index of the first frame for evaluation
     start_frame = int(start_time * fps)
     # index of the last frame for evaluation
-    # duration is time in minutes
-    end_frame = min(int(start_frame + duration * 60 * fps), length)
+    # duration is time in seconds
+    end_frame = min(int(start_frame + duration * fps), length)
 
     rois = create_rois_epm(epm_coors)
+    print("ROIs defined")
+    plot_traj_roi_epm(traj_x, traj_y, rois, start_frame, end_frame)
+
     roi_at_each_frame, data_time_inrois, in_maze = assign_rois_epm(traj_x, traj_y, rois, start_frame, end_frame)
+    print("ROIs assigned")
     prev, transitions, frame_trans = get_transitions(roi_at_each_frame)
     transitions_count = {name: transitions.count(name) for name in transitions}
     # average time in each roi (frames)
@@ -820,15 +832,15 @@ def find_transition_epm(traj_x, traj_y, epm_coors, start_time, duration, spd, fp
     return rois_stats, transitions
 
 
-def find_transition_ezm(traj_x, traj_y, start_time, duration, spd, fps=50):
+def analyze_trajectory_ezm(traj_x, traj_y, start_time, duration, spd, fps=50):
     # ROI Analysis (EZM)
     length = len(traj_x)
     # start_time unit: seconds
     # index of the first frame for evaluation
     start_frame = int(start_time * fps)
     # index of the last frame for evaluation
-    # duration is time in minutes
-    end_frame = min(int(start_frame + duration * 60 * fps), length)
+    # duration is time in seconds
+    end_frame = min(int(start_frame + duration * fps), length)
 
     rois, roi_at_each_frame, data_time_inrois, dists = get_rois_dists(traj_x, traj_y, start_frame, end_frame)
     transitions, prev, frame_trans = get_transitions(roi_at_each_frame)
@@ -936,11 +948,11 @@ def traj_process(session, start_time, duration, behavior=None, bp='head', fps=50
 
     if behavior == 'epm':
         EPM_points = load_points(session, behavior)
-        rois_stats, transitions = find_transition_epm(traj_x, traj_y, EPM_points, start_time, duration, spd)
+        rois_stats, transitions = analyze_trajectory_epm(traj_x, traj_y, EPM_points, start_time, duration, spd)
         results.update({'rois_stats': rois_stats, 'transitions': transitions})
 
     if behavior == 'ezm':
-        rois_stats, transitions = find_transition_ezm(traj_x, traj_y, start_time, duration, spd, fps)
+        rois_stats, transitions = analyze_trajectory_ezm(traj_x, traj_y, start_time, duration, spd, fps)
         results.update({'rois_stats': rois_stats, 'transitions': transitions})
 
     return results
