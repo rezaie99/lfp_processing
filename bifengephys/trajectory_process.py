@@ -159,16 +159,16 @@ def create_rois_oft():
 
 def create_rois_epm(epm_coors):
     rois = {
-    'closedtop': Polygon([epm_coors['tr'], epm_coors['tl'], epm_coors['ctcl'], epm_coors['ctcr']]),
-    'center': Polygon([epm_coors['ctcr'], epm_coors['ctcl'], epm_coors['cbcl'], epm_coors['cbcr']]),
-    'closedbottom': Polygon([epm_coors['cbcr'], epm_coors['cbcl'], epm_coors['bl'], epm_coors['br']]),
-    'openleft': Polygon([epm_coors['ctcl'], epm_coors['ctl'], epm_coors['cbl'], epm_coors['cbcl']]),
-    'openright': Polygon([epm_coors['ctr'], epm_coors['ctcr'], epm_coors['cbcr'], epm_coors['cbr']]),
+    'closedtop': Polygon([epm_coors['tclosedtr'], epm_coors['tclosedtl'], epm_coors['tclosedbl'], epm_coors['tclosedbr']]),
+    'center': Polygon([epm_coors['centertl'], epm_coors['centertr'], epm_coors['centerbr'], epm_coors['centerbl']]),
+    'closedbottom': Polygon([epm_coors['bclosedbl'], epm_coors['bclosedbr'], epm_coors['bclosedtr'], epm_coors['bclosedtl']]),
+    'openleft': Polygon([epm_coors['lopentl'], epm_coors['lopenbl'], epm_coors['lopenbr'], epm_coors['lopentr']]),
+    'openright': Polygon([epm_coors['ropentl'], epm_coors['ropenbl'], epm_coors['ropenbr'], epm_coors['ropentr']]),
     }
     return rois
 
 
-def plot_traj_roi_epm(traj_x, traj_y, rois, start_frame, end_frame):
+def plot_traj_roi_epm(traj_x, traj_y, rois, start_frame, end_frame, bp):
     fig, ax = plt.subplots(1, figsize=(6, 6))
 
     # plot trajectory + bounding boxes for rois
@@ -199,6 +199,7 @@ def plot_traj_roi_epm(traj_x, traj_y, rois, start_frame, end_frame):
                              facecolor='none')
     ax.add_patch(polygon)
 
+    plt.title('Calibrated trajectory of '+bp+' with ROIs', fontsize=18)
     plt.xlim(0, 450)
     plt.ylim(0, 450)
     plt.show()
@@ -257,11 +258,10 @@ def assign_rois(traj_x, traj_y, rois):
     return roi_at_each_frame, data_time_inrois
 
 
-def assign_rois_epm(traj_x, traj_y, rois, start_frame, end_frame):
+def assign_rois_epm(traj_x, traj_y, traj_x_head, traj_y_head, rois, start_frame, end_frame):
     data_length = len(traj_x)
 
     roi_at_each_frame = []
-    in_maze = []
     for i in range(data_length):
         if start_frame <= i <= end_frame:
             x, y = traj_x[i], traj_y[i]
@@ -272,15 +272,27 @@ def assign_rois_epm(traj_x, traj_y, rois, start_frame, end_frame):
                     bounded = True
                     roi_at_each_frame.append(curr_roi)
             if not bounded:
-                in_maze.append('out')
                 if x < 225:
                     roi_at_each_frame.append('openleft')
                 else:
                     roi_at_each_frame.append('openright')
-            else:
-                in_maze.append('in')
         else:
             roi_at_each_frame.append('nan')
+
+    in_maze = []
+    for i in range(data_length):
+        if start_frame <= i <= end_frame:
+            x, y = traj_x_head[i], traj_y_head[i]
+            curr_point = Point(x, y)
+            bounded = False
+            for j, curr_roi in enumerate(rois):
+                if curr_point.within(rois[curr_roi]):
+                    bounded = True
+            if bounded:
+                in_maze.append('in')
+            else:
+                in_maze.append('out')
+        else:
             in_maze.append('nan')
 
     data_time_inrois = {name: roi_at_each_frame.count(name) for name in set(
@@ -691,7 +703,7 @@ def get_nose_dips_epm(in_maze, start_frame, end_frame, fps=50):
                 end += 1
 
             if end < len(in_maze):
-                if end - begin > fps // 2:
+                if end - begin > fps // 4:
                     if start_frame <= begin <= end_frame and start_frame <= end <= end_frame:
                         dip_starttime.append(begin)
                         dip_stoptime.append(end)
@@ -761,7 +773,7 @@ def find_transition_oft(traj_x, traj_y, fps=50):
     return rois_stats, transitions
 
 
-def analyze_trajectory_epm(traj_x, traj_y, epm_coors, start_time, duration, spd, fps=50):
+def analyze_trajectory_epm(traj_x, traj_y, traj_x_head, traj_y_head, epm_coors, start_time, duration, spd, fps=50):
     # ROI Analysis (EZM)
     length = len(np.array(traj_x))
     # start_time unit: seconds
@@ -773,9 +785,10 @@ def analyze_trajectory_epm(traj_x, traj_y, epm_coors, start_time, duration, spd,
 
     rois = create_rois_epm(epm_coors)
     print("ROIs defined")
-    plot_traj_roi_epm(traj_x, traj_y, rois, start_frame, end_frame)
+    plot_traj_roi_epm(traj_x_head, traj_y_head, rois, start_frame, end_frame, bp='head')
+    plot_traj_roi_epm(traj_x, traj_y, rois, start_frame, end_frame, bp='body')
 
-    roi_at_each_frame, data_time_inrois, in_maze = assign_rois_epm(traj_x, traj_y, rois, start_frame, end_frame)
+    roi_at_each_frame, data_time_inrois, in_maze = assign_rois_epm(traj_x, traj_y, traj_x_head, traj_y_head, rois, start_frame, end_frame)
     print("ROIs assigned")
     prev, transitions, frame_trans = get_transitions(roi_at_each_frame)
     transitions_count = {name: transitions.count(name) for name in transitions}
@@ -919,11 +932,14 @@ def traj_process(session, start_time, duration, behavior=None, bp='head', fps=50
     fps = fps
     traj_df, scorer = load_traj(session)
     if behavior == 'epm':
-        traj_x, traj_y = calib_traj(traj_df, start_time, duration, fps, bp=bp, XYMAX=450)
+        traj_x_head, traj_y_head = calib_traj(traj_df, start_time, duration, fps, bp='head', XYMAX=450)
+        traj_x_tail, traj_y_tail = calib_traj(traj_df, start_time, duration, fps, bp='tail', XYMAX=450)
+        traj_x = (traj_x_head + traj_x_tail) / 2.0
+        traj_y = (traj_y_head + traj_y_tail) / 2.0
+        accumulated_distance, spd, acc, ismoving = calculate_speed_acc(traj_x, traj_y, start_time, duration, fps, move_cutoff=5)
     elif behavior == 'ezm':
         traj_x, traj_y = calib_traj(traj_df, start_time, duration, fps, bp=bp, XYMAX=400)
-
-    accumulated_distance, spd, acc, ismoving = calculate_speed_acc(traj_x, traj_y, start_time, duration, fps, move_cutoff=5)
+        accumulated_distance, spd, acc, ismoving = calculate_speed_acc(traj_x, traj_y, start_time, duration, fps, move_cutoff=5)
 
     results = {}
     movement = {
@@ -948,7 +964,7 @@ def traj_process(session, start_time, duration, behavior=None, bp='head', fps=50
 
     if behavior == 'epm':
         EPM_points = load_points(session, behavior)
-        rois_stats, transitions = analyze_trajectory_epm(traj_x, traj_y, EPM_points, start_time, duration, spd)
+        rois_stats, transitions = analyze_trajectory_epm(traj_x, traj_y, traj_x_head, traj_y_head, EPM_points, start_time, duration, spd)
         results.update({'rois_stats': rois_stats, 'transitions': transitions})
 
     if behavior == 'ezm':
