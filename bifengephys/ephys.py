@@ -495,7 +495,7 @@ def multiple_formatter(denominator=2, number=np.pi, latex='\pi'):
     return _multiple_formatter
 
 
-def plot_phase_coh(data, fname, band='theta', mpfc_index=0, srate=500, tstart=30, twin=600, nbins=60, axs=None, showfig=True):
+def plot_phase_coh(data, fname, band='theta', exclude=[], mpfc_index=0, srate=500, tstart=30, twin=600, nbins=60, axs=None, showfig=True):
     '''
     plot representative histogram of theta phase differences in a specific period
     time period defined by tstart (starting time, in seconds) and twin (length of time window, in seconds)
@@ -515,45 +515,46 @@ def plot_phase_coh(data, fname, band='theta', mpfc_index=0, srate=500, tstart=30
     vhipp_pads = np.array(phase_vhipp.columns)
 
     if axs == None:
-        fig, axs = plt.subplots(5, len(phase_vhipp.columns)//5, 
+        fig, axs = plt.subplots(6, len(phase_vhipp.columns)//5, 
             figsize=(6*6, 12*5), tight_layout=True, sharey=True)
 
     FWHM = []
     mpfc_padid = mpfc_pads[mpfc_index]
 
     for i in range(len(vhipp_pads)):
-        vhipp_padid = vhipp_pads[i]
-        power_vhipp_curr = np.array(power_vhipp[vhipp_padid])
-        power_vhipp_mean = np.mean(power_vhipp_curr)
-        exceedmean = np.where(power_vhipp_curr > power_vhipp_mean)
-        positions = exceedmean[0]
-        filtered = (positions[np.logical_and(positions>=start, positions<end)],)
-        # print("%d out of %d selected for plotting" % (len(power_vhipp_curr[exceedmean]), len(power_vhipp_curr)))
+        if not vhipp_pads[i] in exclude:
+            vhipp_padid = vhipp_pads[i]
+            power_vhipp_curr = np.array(power_vhipp[vhipp_padid])
+            power_vhipp_mean = np.mean(power_vhipp_curr)
+            exceedmean = np.where(power_vhipp_curr > power_vhipp_mean)
+            positions = exceedmean[0]
+            filtered = (positions[np.logical_and(positions>=start, positions<end)],)
+            # print("%d out of %d selected for plotting" % (len(power_vhipp_curr[exceedmean]), len(power_vhipp_curr)))
 
-        plti = i//6
-        pltj = i-plti*6
+            plti = i//5
+            pltj = i-plti*5
 
-        phase_diff = np.unwrap(np.array(phase_mpfc[mpfc_padid])) - np.unwrap(np.array(phase_vhipp[vhipp_padid]))
-        phase_diff_filtered = phase_diff[filtered]
-        phase_diff_filtered = (phase_diff_filtered + np.pi) % (2.0 * np.pi) - np.pi
-        # print(len(phase_diff_filtered),' ', len(phase_diff))
+            phase_diff = np.unwrap(np.array(phase_mpfc[mpfc_padid])) - np.unwrap(np.array(phase_vhipp[vhipp_padid]))
+            phase_diff_filtered = phase_diff[filtered]
+            phase_diff_filtered = (phase_diff_filtered + np.pi) % (2.0 * np.pi) - np.pi
+            # print(len(phase_diff_filtered),' ', len(phase_diff))
 
-        # add_pos = np.where(np.logical_and(-2*np.pi <= phase_diff_filtered, phase_diff_filtered < -np.pi))
-        # phase_diff_filtered[add_pos] += 2*np.pi
-        # sub_pos = np.where(np.logical_and(np.pi <= phase_diff_filtered, phase_diff_filtered < 2*np.pi))
-        # phase_diff_filtered[sub_pos] -= 2*np.pi
-        # phase_diff_filtered = np.unwrap(phase_diff_filtered)
+            # add_pos = np.where(np.logical_and(-2*np.pi <= phase_diff_filtered, phase_diff_filtered < -np.pi))
+            # phase_diff_filtered[add_pos] += 2*np.pi
+            # sub_pos = np.where(np.logical_and(np.pi <= phase_diff_filtered, phase_diff_filtered < 2*np.pi))
+            # phase_diff_filtered[sub_pos] -= 2*np.pi
+            # phase_diff_filtered = np.unwrap(phase_diff_filtered)
 
-        n,bins,patches = axs[plti, pltj].hist(phase_diff_filtered, bins=nbins, alpha=1)
-        axs[plti, pltj].set_title('mPFC_pad'+str(mpfc_padid)+'-vHPC_pad'+str(vhipp_padid), fontsize=16)
-        axs[plti, pltj].xaxis.set_major_locator(plt.MultipleLocator(np.pi))
-        axs[plti, pltj].xaxis.set_major_formatter(plt.FuncFormatter(multiple_formatter()))
-        axs[plti, pltj].grid(True)
-        axs[plti, pltj].tick_params(axis='both', which='major', labelsize=10)
+            n,bins,patches = axs[plti, pltj].hist(phase_diff_filtered, bins=nbins, alpha=1)
+            axs[plti, pltj].set_title('mPFC_pad'+str(mpfc_padid)+'-vHPC_pad'+str(vhipp_padid), fontsize=16)
+            axs[plti, pltj].xaxis.set_major_locator(plt.MultipleLocator(np.pi))
+            axs[plti, pltj].xaxis.set_major_formatter(plt.FuncFormatter(multiple_formatter()))
+            axs[plti, pltj].grid(True)
+            axs[plti, pltj].tick_params(axis='both', which='major', labelsize=10)
 
-        peak_value = np.max(n)
-        half_range = np.where(n>peak_value/2)
-        FWHM.append(bins[np.max(half_range)]-bins[np.min(half_range)])
+            peak_value = np.max(n)
+            half_range = np.where(n>peak_value/2)
+            FWHM.append(bins[np.max(half_range)]-bins[np.min(half_range)])
 
     # Create a big subplot
     ax = fig.add_subplot(111, frameon=False)
@@ -568,7 +569,7 @@ def plot_phase_coh(data, fname, band='theta', mpfc_index=0, srate=500, tstart=30
     return FWHM
 
 
-def plot_crosscorr(data, fname, band='theta', mpfc_index=0, srate=500, tstart=30, twin=600, axs=None, showfig=True):
+def plot_crosscorr(data, fname, band='theta', exclude=[], mpfc_index=0, srate=500, tstart=30, twin=600, axs=None, showfig=True):
     start = int(tstart * srate)
     end = int((tstart + twin) * srate)
 
@@ -579,43 +580,44 @@ def plot_crosscorr(data, fname, band='theta', mpfc_index=0, srate=500, tstart=30
     vhipp_pads = np.array(power_vhipp.columns)
 
     if axs == None:
-        fig, axs = plt.subplots(5, len(power_vhipp.columns)//5, 
+        fig, axs = plt.subplots(6, len(power_vhipp.columns)//5, 
             figsize=(6*6, 12*5), tight_layout=True)
 
     lags_currmpfc = []
     mpfc_padid = mpfc_pads[mpfc_index]
 
     for i in range(len(vhipp_pads)):
-        vhipp_padid = vhipp_pads[i]
+        if not vhipp_pads[i] in exclude:
+            vhipp_padid = vhipp_pads[i]
 
-        plti = i//6
-        pltj = i-plti*6
+            plti = i//5
+            pltj = i-plti*5
 
-        power_vhipp_curr = np.array(power_vhipp[vhipp_padid])[start:end]
-        power_mpfc_curr = np.array(power_mpfc[mpfc_padid])[start:end]
-        power_vhipp_mean = np.mean(power_vhipp_curr)
-        exceedmean = np.where(power_vhipp_curr > power_vhipp_mean)
+            power_vhipp_curr = np.array(power_vhipp[vhipp_padid])[start:end]
+            power_mpfc_curr = np.array(power_mpfc[mpfc_padid])[start:end]
+            power_vhipp_mean = np.mean(power_vhipp_curr)
+            exceedmean = np.where(power_vhipp_curr > power_vhipp_mean)
 
-        power_vhipp_filtered = power_vhipp_curr[exceedmean]
-        power_mpfc_filtered = power_mpfc_curr[exceedmean]
+            power_vhipp_filtered = power_vhipp_curr[exceedmean]
+            power_mpfc_filtered = power_mpfc_curr[exceedmean]
 
-        print('%d out of %d time points selected' % (len(power_vhipp_filtered), len(power_vhipp_curr)))
-        
-        corr = correlate(power_mpfc_filtered, power_vhipp_filtered)
-        corr /= np.max(corr)
-        lags = correlation_lags(len(power_mpfc_filtered), len(power_vhipp_filtered)) / srate * 1000
-        lag = lags[np.argmax(corr)]
+            print('%d out of %d time points selected' % (len(power_vhipp_filtered), len(power_vhipp_curr)))
+            
+            corr = correlate(power_mpfc_filtered, power_vhipp_filtered)
+            corr /= np.max(corr)
+            lags = correlation_lags(len(power_mpfc_filtered), len(power_vhipp_filtered)) / srate * 1000
+            lag = lags[np.argmax(corr)]
 
-        axs[plti, pltj].set_title('mPFC_pad'+str(mpfc_padid)+'-vHPC_pad'+str(vhipp_padid), fontsize=16)
-        axs[plti, pltj].scatter([lag], corr[np.argmax(corr)], color='red', s=50)
-        axs[plti, pltj].axvline(x=0, color='k', linestyle='--')
-        axs[plti, pltj].plot(lags, corr)
-        axs[plti, pltj].tick_params(axis='both', which='major', labelsize=14)
-        axs[plti, pltj].set_xlim(-40,40)
-        axs[plti, pltj].set_xlabel('Lag (ms)', fontsize=18)
-        axs[plti, pltj].set_ylabel('vHPC-mPFC theta power crosscorr', fontsize=18)
+            axs[plti, pltj].set_title('mPFC_pad'+str(mpfc_padid)+'-vHPC_pad'+str(vhipp_padid), fontsize=16)
+            axs[plti, pltj].scatter([lag], corr[np.argmax(corr)], color='red', s=50)
+            axs[plti, pltj].axvline(x=0, color='k', linestyle='--')
+            axs[plti, pltj].plot(lags, corr)
+            axs[plti, pltj].tick_params(axis='both', which='major', labelsize=14)
+            axs[plti, pltj].set_xlim(-40,40)
+            axs[plti, pltj].set_xlabel('Lag (ms)', fontsize=18)
+            axs[plti, pltj].set_ylabel('vHPC-mPFC theta power crosscorr', fontsize=18)
 
-        lags_currmpfc.append(lag)
+            lags_currmpfc.append(lag)
 
     plt.savefig(fname)
     plt.show()

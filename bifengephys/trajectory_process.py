@@ -940,6 +940,9 @@ def traj_process(session, start_time, duration, behavior=None, bp='head', fps=50
     elif behavior == 'ezm':
         traj_x, traj_y = calib_traj(traj_df, start_time, duration, fps, bp=bp, XYMAX=400)
         accumulated_distance, spd, acc, ismoving = calculate_speed_acc(traj_x, traj_y, start_time, duration, fps, move_cutoff=5)
+    elif behavior == 'arena':
+        traj_x, traj_y = calib_traj(traj_df, start_time, duration, fps, bp=bp, XYMAX=400)
+        accumulated_distance, spd, acc, ismoving = calculate_speed_acc(traj_x, traj_y, start_time, duration, fps, move_cutoff=5)
 
     results = {}
     movement = {
