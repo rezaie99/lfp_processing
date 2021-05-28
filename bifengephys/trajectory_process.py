@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 from collections import namedtuple
 import pickle
+from sys import exit
 
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
@@ -11,23 +12,25 @@ from scipy import interpolate
 from shapely.geometry import Point, Polygon
 
 
-def load_traj(session):
-    file_dir = 'D:\\ephys\\' + session + '\\ephys_processed\\'
-    try:
-        fname = glob.glob(file_dir + '*.h5')[0]
-        print(file_dir)
-    except IndexError:
-        print('Key coordinates for EPM dictionary file not found!')
-        exit()
+def load_traj(base_dir, session):
+    # file_dir = 'D:\\ephys\\' + session + '\\ephys_processed\\'
+    file_dir = base_dir + session + '/ephys_processed/'
+    fname = glob.glob(file_dir + '*.h5')[0]
+    print(file_dir)
     traj_df = pd.read_hdf(fname)
     scorer = traj_df.columns[0][0]
     return traj_df, scorer
 
 
-def load_points(session, behavior):
-    file_dir = 'D:\\ephys\\' + session + '\\ephys_processed\\'
-    if behavior == 'epm':
+def load_points(base_dir, session, behavior):
+    # file_dir = 'D:\\ephys\\' + session + '\\ephys_processed\\'
+    file_dir = base_dir + session + '/ephys_processed/'
+    try:
         fname = glob.glob(file_dir + 'EPM_points.pkl')[0]
+        print(file_dir)
+    except IndexError:
+        print('Key coordinates for EPM dictionary file not found!')
+        exit()
     #TODO: OFT
     print(fname + ' loaded')
     points_file = open(fname, 'rb')
@@ -928,9 +931,9 @@ def analyze_trajectory_ezm(traj_x, traj_y, start_time, duration, spd, fps=50):
     return rois_stats, transitions
 
 
-def traj_process(session, start_time, duration, behavior=None, bp='head', fps=50):
+def traj_process(base_dir, session, start_time, duration, behavior=None, bp='head', fps=50):
     fps = fps
-    traj_df, scorer = load_traj(session)
+    traj_df, scorer = load_traj(base_dir, session)
     if behavior == 'epm':
         traj_x_head, traj_y_head = calib_traj(traj_df, start_time, duration, fps, bp='head', XYMAX=450)
         traj_x_tail, traj_y_tail = calib_traj(traj_df, start_time, duration, fps, bp='tail', XYMAX=450)
@@ -966,7 +969,7 @@ def traj_process(session, start_time, duration, behavior=None, bp='head', fps=50
     #         'transitions': transitions})
 
     if behavior == 'epm':
-        EPM_points = load_points(session, behavior)
+        EPM_points = load_points(base_dir, session, behavior)
         rois_stats, transitions = analyze_trajectory_epm(traj_x, traj_y, traj_x_head, traj_y_head, EPM_points, start_time, duration, spd)
         results.update({'rois_stats': rois_stats, 'transitions': transitions})
 

@@ -12,12 +12,10 @@ import os
 import sys
 
 
-# sys.path.append('D:\ephys')
-
-
-def load_data(session):
+def load_data(base_dir, session):
     print(session)
-    file = 'D:\\ephys\\' + session + '\\ephys_processed\\' + session + '_dataset.pkl'
+    # file = 'D:\\ephys\\' + session + '\\ephys_processed\\' + session + '_dataset.pkl'
+    file = base_dir + session + '/ephys_processed/' + session + '_dataset.pkl' 
     # with open(session + '/ephys_processed/' + session + '_dataset.pkl', "rb") as f:
     with open(file, 'rb') as f:
         data = pickle.load(f)
@@ -600,8 +598,6 @@ def plot_crosscorr(data, fname, band='theta', exclude=[], mpfc_index=0, srate=50
 
             power_vhipp_filtered = power_vhipp_curr[exceedmean]
             power_mpfc_filtered = power_mpfc_curr[exceedmean]
-
-            print('%d out of %d time points selected' % (len(power_vhipp_filtered), len(power_vhipp_curr)))
             
             corr = correlate(power_mpfc_filtered, power_vhipp_filtered)
             corr /= np.max(corr)
