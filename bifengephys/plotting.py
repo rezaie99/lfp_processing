@@ -92,6 +92,35 @@ def plot_mean_ci(data, duration=300):
     plt.fill_between(t[:duration * srate], ci95[0][:duration * srate], ci95[1][:duration * srate], alpha=0.3)
     plt.show()
     
+    
+def multiple_formatter(denominator=2, number=np.pi, latex='\pi'):
+    def gcd(a, b):
+        while b:
+            a, b = b, a%b
+        return a
+    def _multiple_formatter(x, pos):
+        den = denominator
+        num = np.int(np.rint(den*x/number))
+        com = gcd(num,den)
+        (num,den) = (int(num/com),int(den/com))
+        if den==1:
+            if num==0:
+                return r'$0$'
+            if num==1:
+                return r'$%s$'%latex
+            elif num==-1:
+                return r'$-%s$'%latex
+            else:
+                return r'$%s%s$'%(num,latex)
+        else:
+            if num==1:
+                return r'$\frac{%s}{%s}$'%(latex,den)
+            elif num==-1:
+                return r'$\frac{-%s}{%s}$'%(latex,den)
+            else:
+                return r'$\frac{%s%s}{%s}$'%(num,latex,den)
+    return _multiple_formatter
+    
 
 def plot_phase_coh_pairs(data, animal, session, savedir, band='theta', exclude=[], srate=500, beh_srate=50, tstart=30, twin=600, nbins=60, axs=None, showfig=True, select_idx=None):
     phase_mpfc = ephys.column_by_pad(ephys.get_phase(data, 'mpfc', band))
@@ -113,12 +142,14 @@ def plot_phase_coh_pairs(data, animal, session, savedir, band='theta', exclude=[
     print(end-start)
 
     FWHMs = []
+    peak_positions = []
     for i in range(len(mpfc_pads)):
         if not mpfc_pads[i] in exclude:
-            FWHM = ephys.plot_phase_coh(data, 
+            FWHM, phase_diff_peakpos = ephys.plot_phase_coh(data, 
                                         fname=savedir+animal[session]+'_mPFC_pad'+str(mpfc_pads[i])+'_phasecoh.jpg', pointselect=points,
                                         band='theta', exclude=exclude, mpfc_index=i, nbins=nbins)
             FWHMs.append(FWHM)
+            peak_positions.append(phase_diff_peakpos)
 
     FWHMs_np = np.array(FWHMs)
     mpfc_ch_labels = ['pad'+str(i) for i in mpfc_pads if i not in exclude]
@@ -149,6 +180,22 @@ def plot_phase_coh_pairs(data, animal, session, savedir, band='theta', exclude=[
     plt.xlabel('vHPC')
     plt.ylabel('mPFC')
     plt.savefig(savedir+animal[session]+'_phasecoh_fwhms.jpg')
+    plt.show()
+
+    peak_positions_all = np.array(peak_positions).flatten()
+    plt.figure(figsize=(10,10))
+    fig, ax = plt.subplots()
+    bin_edges = np.linspace(-np.pi, np.pi, num=64)
+    n, bins, patches = ax.hist(peak_positions_all, bin_edges, histtype='stepfilled')
+    ax.axvline(x=0, ymin=0, ymax=100, color='k', linestyle='--')
+    ax.xaxis.set_major_locator(plt.MultipleLocator(np.pi))
+    ax.xaxis.set_major_formatter(plt.FuncFormatter(multiple_formatter()))
+    ax.xaxis.set_minor_locator(plt.MultipleLocator(np.pi/6))
+    ax.tick_params(axis='both', which='major', labelsize=8)
+    ax.set_xlabel('Phase difference (rad)', labelpad=18, fontsize=12)
+    ax.set_ylabel('Counts of channel pairs', labelpad=18, fontsize=12)
+    ax.set_title('Peak phase lags across all vHPC-mPFC pairs', fontsize=18)
+    plt.savefig(savedir+animal[session]+'_phase_diff_all.jpg')
     plt.show()
 
 

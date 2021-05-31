@@ -493,7 +493,7 @@ def multiple_formatter(denominator=2, number=np.pi, latex='\pi'):
     return _multiple_formatter
 
 
-def plot_phase_coh(data, fname, band='theta', exclude=[], mpfc_index=0, srate=500, tstart=30, twin=600, nbins=60, axs=None, showfig=True):
+def plot_phase_coh(data, fname, pointselect, band='theta', exclude=[], mpfc_index=0, nbins=60, axs=None, showfig=True):
     '''
     plot representative histogram of theta phase differences in a specific period
     time period defined by tstart (starting time, in seconds) and twin (length of time window, in seconds)
@@ -501,8 +501,6 @@ def plot_phase_coh(data, fname, band='theta', exclude=[], mpfc_index=0, srate=50
     returns an array of all plots' full width half maximum (FWHM) (unit: radians)
     number of bins is selected as 
     '''
-    start = int(tstart * srate)
-    end = int((tstart + twin) * srate)
 
     phase_mpfc = column_by_pad(get_phase(data, 'mpfc', band))
     power_mpfc = column_by_pad(get_power(data, 'mpfc', band))
@@ -517,6 +515,7 @@ def plot_phase_coh(data, fname, band='theta', exclude=[], mpfc_index=0, srate=50
             figsize=(6*6, 12*5), tight_layout=True, sharey=True)
 
     FWHM = []
+    phase_diff_peakpos = []
     mpfc_padid = mpfc_pads[mpfc_index]
 
     for i in range(len(vhipp_pads)):
@@ -524,10 +523,12 @@ def plot_phase_coh(data, fname, band='theta', exclude=[], mpfc_index=0, srate=50
             vhipp_padid = vhipp_pads[i]
             power_vhipp_curr = np.array(power_vhipp[vhipp_padid])
             power_vhipp_mean = np.mean(power_vhipp_curr)
-            exceedmean = np.where(power_vhipp_curr > power_vhipp_mean)
-            positions = exceedmean[0]
-            filtered = (positions[np.logical_and(positions>=start, positions<end)],)
-            # print("%d out of %d selected for plotting" % (len(power_vhipp_curr[exceedmean]), len(power_vhipp_curr)))
+            
+            filtered = []
+            for pos in pointselect:
+                if pos < len(power_vhipp_curr):
+                    if power_vhipp_curr[pos] > power_vhipp_mean:
+                        filtered.append(pos)
 
             plti = i//5
             pltj = i-plti*5
@@ -553,6 +554,8 @@ def plot_phase_coh(data, fname, band='theta', exclude=[], mpfc_index=0, srate=50
             peak_value = np.max(n)
             half_range = np.where(n>peak_value/2)
             FWHM.append(bins[np.max(half_range)]-bins[np.min(half_range)])
+            bin_max = np.where(n == peak_value)
+            phase_diff_peakpos.append(bins[bin_max][0])
 
     # Create a big subplot
     ax = fig.add_subplot(111, frameon=False)
@@ -564,10 +567,10 @@ def plot_phase_coh(data, fname, band='theta', exclude=[], mpfc_index=0, srate=50
     plt.savefig(fname)
     plt.show()
 
-    return FWHM
+    return FWHM, phase_diff_peakpos
 
 
-def plot_crosscorr(data, fname, band='theta', exclude=[], mpfc_index=0, srate=500, tstart=30, twin=600, axs=None, showfig=True):
+def plot_crosscorr(data, fname, pointselect, band='theta', exclude=[], mpfc_index=0, srate=500, tstart=30, twin=600, axs=None, showfig=True):
     start = int(tstart * srate)
     end = int((tstart + twin) * srate)
 
@@ -594,10 +597,15 @@ def plot_crosscorr(data, fname, band='theta', exclude=[], mpfc_index=0, srate=50
             power_vhipp_curr = np.array(power_vhipp[vhipp_padid])[start:end]
             power_mpfc_curr = np.array(power_mpfc[mpfc_padid])[start:end]
             power_vhipp_mean = np.mean(power_vhipp_curr)
-            exceedmean = np.where(power_vhipp_curr > power_vhipp_mean)
+            
+            filtered = []
+            for pos in pointselect:
+                if pos < len(power_vhipp_curr):
+                    if power_vhipp_curr[pos] > power_vhipp_mean:
+                        filtered.append(pos)
 
-            power_vhipp_filtered = power_vhipp_curr[exceedmean]
-            power_mpfc_filtered = power_mpfc_curr[exceedmean]
+            power_vhipp_filtered = power_vhipp_curr[filtered]
+            power_mpfc_filtered = power_mpfc_curr[filtered]
             
             corr = correlate(power_mpfc_filtered, power_vhipp_filtered)
             corr /= np.max(corr)
