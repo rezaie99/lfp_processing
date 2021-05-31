@@ -93,19 +93,31 @@ def plot_mean_ci(data, duration=300):
     plt.show()
     
 
-def plot_phase_coh_pairs(data, animal, session, savedir, band='theta', exclude=[], srate=500, tstart=30, twin=600, nbins=60, axs=None, showfig=True):
+def plot_phase_coh_pairs(data, animal, session, savedir, band='theta', exclude=[], srate=500, beh_srate=50, tstart=30, twin=600, nbins=60, axs=None, showfig=True, select_idx=None):
     phase_mpfc = ephys.column_by_pad(ephys.get_phase(data, 'mpfc', band))
     phase_vhipp = ephys.column_by_pad(ephys.get_phase(data, 'vhipp', band))
     mpfc_pads = np.array(phase_mpfc.columns)
     vhipp_pads = np.array(phase_vhipp.columns)
+    
+    start = int(tstart * srate)
+    end = int((tstart + twin) * srate)
+    points = []
+    for i in range(start, end):
+        beh_time_to_start = int((i - start) / srate * beh_srate)
+        if select_idx is not None:
+            if beh_time_to_start in select_idx:
+                points.append(i)
+        else:
+            points.append(i)
+    print(len(points))
+    print(end-start)
 
     FWHMs = []
     for i in range(len(mpfc_pads)):
         if not mpfc_pads[i] in exclude:
             FWHM = ephys.plot_phase_coh(data, 
-                                        fname=savedir+animal[session]+'_mPFC_pad'+str(mpfc_pads[i])+'_phasecoh.jpg', 
-                                        band='theta', exclude=exclude, mpfc_index=i, srate=srate, 
-                                        tstart=tstart, twin=twin, nbins=nbins)
+                                        fname=savedir+animal[session]+'_mPFC_pad'+str(mpfc_pads[i])+'_phasecoh.jpg', pointselect=points,
+                                        band='theta', exclude=exclude, mpfc_index=i, nbins=nbins)
             FWHMs.append(FWHM)
 
     FWHMs_np = np.array(FWHMs)
@@ -140,17 +152,30 @@ def plot_phase_coh_pairs(data, animal, session, savedir, band='theta', exclude=[
     plt.show()
 
 
-def plot_crosscorr_pairs(data, animal, session, savedir, band='theta', exclude=[], srate=500, tstart=30, twin=600, axs=None, showfig=True):
+def plot_crosscorr_pairs(data, animal, session, savedir, band='theta', exclude=[], srate=500, beh_srate=50, tstart=30, twin=600, axs=None, showfig=True, select_idx=None):
     power_mpfc = ephys.column_by_pad(ephys.get_power(data, 'mpfc', band))
     power_vhipp = ephys.column_by_pad(ephys.get_power(data, 'vhipp', band))
     mpfc_pads = np.array(power_mpfc.columns)
     vhipp_pads = np.array(power_vhipp.columns)
+    
+    start = int(tstart * srate)
+    end = int((tstart + twin) * srate)
+    points = []
+    for i in range(start, end):
+        beh_time_to_start = int((i - start) / srate * beh_srate)
+        if select_idx is not None:
+            if beh_time_to_start in select_idx:
+                points.append(i)
+        else:
+            points.append(i)
+    print(len(points))
+    print(end-start)
 
     mpfc_lags = []
     for i in range(len(mpfc_pads)):
         if not mpfc_pads[i] in exclude:
             mpfc_lags_curr = ephys.plot_crosscorr(data, 
-                                        fname=savedir+animal[session]+'_mPFC_pad'+str(mpfc_pads[i])+'_power_crosscorr.jpg', 
+                                        fname=savedir+animal[session]+'_mPFC_pad'+str(mpfc_pads[i])+'_power_crosscorr.jpg', pointselect=points,
                                         band=band, exclude=exclude, mpfc_index=i, srate=srate, 
                                         tstart=tstart, twin=twin)
             mpfc_lags.append(mpfc_lags_curr)
@@ -166,3 +191,17 @@ def plot_crosscorr_pairs(data, animal, session, savedir, band='theta', exclude=[
             plt.title('vHPC channels-mPFC_pad'+str(mpfc_pads[i])+' lag distribution', fontsize=20)
             plt.savefig(savedir+animal[session]+'_mPFC_pad'+str(mpfc_pads[i])+'_lag_distrib.jpg')
             plt.show()
+    
+    mpfc_lags_all = np.array(mpfc_lags).flatten()
+    plt.figure(figsize=(6,12))
+    bin_edges = np.linspace(-50, 50, num=50)
+    n, bins, patches = plt.hist(mpfc_lags_all, bin_edges, histtype='stepfilled')
+    plt.xlim(-50, 50)
+    plt.xticks(fontsize=14)
+    plt.yticks(fontsize=14)
+    plt.vlines(0,0,50, colors='r', linestyles='dashed')
+    plt.xlabel('Lag (ms)', fontsize=18)
+    plt.ylabel('counts of mPFC-vHPC pairs', fontsize=18)
+    plt.title('Time lags all vHPC-mPFC channel pairs', fontsize=20)
+    plt.savefig(savedir+animal[session]+'_all_lag_distrib.jpg')
+    plt.show()
