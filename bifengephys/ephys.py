@@ -511,8 +511,8 @@ def plot_phase_coh(data, fname, pointselect, band='theta', exclude=[], mpfc_inde
     vhipp_pads = np.array(phase_vhipp.columns)
 
     if axs == None:
-        fig, axs = plt.subplots(6, len(phase_vhipp.columns)//5, 
-            figsize=(6*6, 12*5), tight_layout=True, sharey=True)
+        fig, axs = plt.subplots(6, 6, 
+            figsize=(6*6, 12*6), tight_layout=True, sharey=True)
 
     FWHM = []
     phase_diff_peakpos = []
@@ -530,8 +530,8 @@ def plot_phase_coh(data, fname, pointselect, band='theta', exclude=[], mpfc_inde
                     if power_vhipp_curr[pos] > power_vhipp_mean:
                         filtered.append(pos)
 
-            plti = i//5
-            pltj = i-plti*5
+            plti = i//6
+            pltj = i-plti*6
 
             phase_diff = np.unwrap(np.array(phase_mpfc[mpfc_padid])) - np.unwrap(np.array(phase_vhipp[vhipp_padid]))
             phase_diff_filtered = phase_diff[filtered]
@@ -551,10 +551,14 @@ def plot_phase_coh(data, fname, pointselect, band='theta', exclude=[], mpfc_inde
             axs[plti, pltj].grid(True)
             axs[plti, pltj].tick_params(axis='both', which='major', labelsize=10)
 
-            peak_value = np.max(n)
-            half_range = np.where(n>peak_value/2)
-            FWHM.append(bins[np.max(half_range)]-bins[np.min(half_range)])
-            bin_max = np.where(n == peak_value)
+            difference = np.max(n) - np.min(n)
+            HM = difference / 2.0
+            pos_extremum = n.argmax()
+            nearest_above = (np.abs(n[pos_extremum:-1] - HM)).argmin()
+            nearest_below = (np.abs(n[0:pos_extremum] - HM)).argmin()
+            FWHM.append(np.mean(bins[nearest_above + pos_extremum]) - np.mean(bins[nearest_below]))
+            
+            bin_max = np.where(n == np.max(n))
             phase_diff_peakpos.append(bins[bin_max][0])
 
     # Create a big subplot
@@ -570,6 +574,43 @@ def plot_phase_coh(data, fname, pointselect, band='theta', exclude=[], mpfc_inde
     return FWHM, phase_diff_peakpos
 
 
+def plot_seg_lags(animal, session, power_mpfc, power_vhipp, mpfc_pads, vhipp_pads, mpfc_chid, vhipp_chid, segs, savedir, beh_srate=50, srate=500):
+    vhipp_mean = np.mean(np.array(power_vhipp[vhipp_pads[vhipp_chid]]))
+    pair_lags = []
+    for seg in segs:
+        segstart = seg / beh_srate
+        segend = segstart + 2.5
+        crop_from = int(segstart * srate)
+        crop_to = int(segend * srate)
+        power_mpfc_crop = np.array(power_mpfc[mpfc_pads[mpfc_chid]])[crop_from:crop_to]
+        power_vhipp_crop = np.array(power_vhipp[vhipp_pads[vhipp_chid]])[crop_from:crop_to]
+        vhipp_mean_crop = np.mean(power_vhipp_crop)
+        if vhipp_mean_crop > vhipp_mean:
+            corr = correlate(power_mpfc_crop, power_vhipp_crop)
+            corr /= np.max(corr)
+            lags = correlation_lags(len(power_mpfc_crop), len(power_vhipp_crop)) / srate * 1000
+            lag = lags[np.argmax(corr)]
+            pair_lags.append(lag)
+
+    pair_lags_all = np.array(pair_lags).flatten()
+    plt.figure(figsize=(10,16))
+    fig, ax = plt.subplots()
+    bin_edges = np.linspace(-1000, 1000, num=1000)
+    n, bins, patches = ax.hist(pair_lags_all, bin_edges, histtype='stepfilled')
+    peak_value = np.max(n)
+    bin_max = np.where(n == peak_value)
+    peakpos = bins[bin_max][0]
+    medianpos = np.median(pair_lags_all)
+    ax.tick_params(axis='both', which='major', labelsize=8)
+    ax.set_xlabel('Time lag (ms)', labelpad=18, fontsize=12)
+    ax.set_ylabel('Counts of 2.5s time segments', labelpad=18, fontsize=12)
+    ax.set_title('Time lags of channel pair ' + str(mpfc_pads[mpfc_chid]) + '-' + str(vhipp_pads[vhipp_chid]) + ' across time intervals', fontsize=14)
+    plt.savefig(savedir+animal[session]+ str(mpfc_pads[mpfc_chid]) + '_' + str(vhipp_pads[vhipp_chid])+ '_allseglags.jpg', bbox_inches = 'tight')
+    plt.show()
+    
+    return peakpos, medianpos
+
+
 def plot_crosscorr(data, fname, pointselect, band='theta', exclude=[], mpfc_index=0, srate=500, tstart=30, twin=600, axs=None, showfig=True):
     start = int(tstart * srate)
     end = int((tstart + twin) * srate)
@@ -581,8 +622,8 @@ def plot_crosscorr(data, fname, pointselect, band='theta', exclude=[], mpfc_inde
     vhipp_pads = np.array(power_vhipp.columns)
 
     if axs == None:
-        fig, axs = plt.subplots(6, len(power_vhipp.columns)//5, 
-            figsize=(6*6, 12*5), tight_layout=True)
+        fig, axs = plt.subplots(6, 6, 
+            figsize=(6*6, 12*6), tight_layout=True)
 
     lags_currmpfc = []
     mpfc_padid = mpfc_pads[mpfc_index]
@@ -591,8 +632,8 @@ def plot_crosscorr(data, fname, pointselect, band='theta', exclude=[], mpfc_inde
         if not vhipp_pads[i] in exclude:
             vhipp_padid = vhipp_pads[i]
 
-            plti = i//5
-            pltj = i-plti*5
+            plti = i//6
+            pltj = i-plti*6
 
             power_vhipp_curr = np.array(power_vhipp[vhipp_padid])[start:end]
             power_mpfc_curr = np.array(power_mpfc[mpfc_padid])[start:end]
