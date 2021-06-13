@@ -173,7 +173,7 @@ def plot_phase_coh_pairs(data, animal, session, savedir, band='theta', exclude=[
     return mpfc_ch_labels, vhipp_ch_labels, FWHMs_np
 
 
-def plot_seg_lags_pairs(data, animal, session, savedir, band='theta', exclude=[], srate=500, beh_srate=50, tstart=0, twin=600, select_idx=None):
+def plot_seg_lags_pairs(data, animal, session, savedir, seglen=1.0, band='theta', exclude=[], srate=500, beh_srate=50, tstart=0, twin=600, select_idx=None):
     segs = []
     maxtime = int((tstart + twin) * beh_srate)
 
@@ -186,10 +186,10 @@ def plot_seg_lags_pairs(data, animal, session, savedir, band='theta', exclude=[]
         start = pos
         count = 0
         if pos in select_idx:
-            while count < int(beh_srate * 2.5) and pos in select_idx:
+            while count < int(beh_srate * seglen) and pos in select_idx:
                 count += 1
                 pos += 1
-        if count >= int(beh_srate * 2.5):
+        if count >= int(beh_srate * seglen):
             segs.append(start)
         else:
             pos += 1
@@ -207,7 +207,7 @@ def plot_seg_lags_pairs(data, animal, session, savedir, band='theta', exclude=[]
     for mpfc_chid in range(len(mpfc_pads)):
         for vhipp_chid in range(len(vhipp_pads)):
             if (not vhipp_pads[vhipp_chid] in exclude) and (not mpfc_pads[mpfc_chid] in exclude):
-                peakpos, medianpos = ephys.plot_seg_lags(animal, session, power_mpfc, power_vhipp, mpfc_pads, vhipp_pads, mpfc_chid, vhipp_chid, segs, savedir, beh_srate=50, srate=500)
+                peakpos, medianpos = ephys.plot_seg_lags(animal, session, seglen, power_mpfc, power_vhipp, mpfc_pads, vhipp_pads, mpfc_chid, vhipp_chid, segs, savedir, beh_srate=50, srate=500)
                 timelag_peakpos.append(peakpos)
                 timelag_medianpos.append(medianpos)
     

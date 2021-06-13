@@ -574,28 +574,30 @@ def plot_phase_coh(data, fname, pointselect, band='theta', exclude=[], mpfc_inde
     return FWHM, phase_diff_peakpos
 
 
-def plot_seg_lags(animal, session, power_mpfc, power_vhipp, mpfc_pads, vhipp_pads, mpfc_chid, vhipp_chid, segs, savedir, beh_srate=50, srate=500):
+def plot_seg_lags(animal, session, seglen, power_mpfc, power_vhipp, mpfc_pads, vhipp_pads, mpfc_chid, vhipp_chid, segs, savedir, beh_srate=50, srate=500):
     vhipp_mean = np.mean(np.array(power_vhipp[vhipp_pads[vhipp_chid]]))
     pair_lags = []
     for seg in segs:
         segstart = seg / beh_srate
-        segend = segstart + 2.5
+        segend = segstart + seglen
         crop_from = int(segstart * srate)
         crop_to = int(segend * srate)
         power_mpfc_crop = np.array(power_mpfc[mpfc_pads[mpfc_chid]])[crop_from:crop_to]
         power_vhipp_crop = np.array(power_vhipp[vhipp_pads[vhipp_chid]])[crop_from:crop_to]
         vhipp_mean_crop = np.mean(power_vhipp_crop)
         if vhipp_mean_crop > vhipp_mean:
-            corr = correlate(power_mpfc_crop, power_vhipp_crop)
+            corr = correlate(power_mpfc_crop, power_vhipp_crop, mode="full")
             corr /= np.max(corr)
-            lags = correlation_lags(len(power_mpfc_crop), len(power_vhipp_crop)) / srate * 1000
+            lags = correlation_lags(len(power_mpfc_crop), len(power_vhipp_crop), mode="full") / srate * 1000
             lag = lags[np.argmax(corr)]
             pair_lags.append(lag)
 
     pair_lags_all = np.array(pair_lags).flatten()
     plt.figure(figsize=(10,16))
     fig, ax = plt.subplots()
-    bin_edges = np.linspace(-1000, 1000, num=1000)
+    ax.axvline(x=0, ymin=0, ymax=100, color='k', linestyle='--', alpha=0.2)
+
+    bin_edges = np.linspace(-int(seglen*srate*2), int(seglen*srate*2), num=int(seglen*srate*2))
     n, bins, patches = ax.hist(pair_lags_all, bin_edges, histtype='stepfilled')
     peak_value = np.max(n)
     bin_max = np.where(n == peak_value)
@@ -603,7 +605,7 @@ def plot_seg_lags(animal, session, power_mpfc, power_vhipp, mpfc_pads, vhipp_pad
     medianpos = np.median(pair_lags_all)
     ax.tick_params(axis='both', which='major', labelsize=8)
     ax.set_xlabel('Time lag (ms)', labelpad=18, fontsize=12)
-    ax.set_ylabel('Counts of 2.5s time segments', labelpad=18, fontsize=12)
+    ax.set_ylabel('Counts of time segments', labelpad=18, fontsize=12)
     ax.set_title('Time lags of channel pair ' + str(mpfc_pads[mpfc_chid]) + '-' + str(vhipp_pads[vhipp_chid]) + ' across time intervals', fontsize=14)
     plt.savefig(savedir+animal[session]+ str(mpfc_pads[mpfc_chid]) + '_' + str(vhipp_pads[vhipp_chid])+ '_allseglags.jpg', bbox_inches = 'tight')
     plt.show()
