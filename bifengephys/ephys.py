@@ -9,8 +9,7 @@ from scipy.cluster.hierarchy import fcluster
 from scipy.signal import correlate, correlation_lags
 from scipy.stats import wilcoxon
 from sklearn.cluster import KMeans
-import os
-import sys
+import random
 
 
 def load_data(base_dir, session):
@@ -547,184 +546,100 @@ def get_phase_diffs(data, animal, session, tstart, twin, exclude, nbins, select_
     return results
 
 
+def get_FWHM(phase_diff_result):
+    mpfc_channels = []
+    vhipp_channels = []
 
-def plot_phase_coh(data, fname, pointselect, band='theta', exclude=[], mpfc_index=0, nbins=60, axs=None, showfig=True):
-    '''
-    plot representative histogram of theta phase differences in a specific period
-    time period defined by tstart (starting time, in seconds) and twin (length of time window, in seconds)
-    one mPFC channel against all vHPC channels (30)
-    returns an array of all plots' full width half maximum (FWHM) (unit: radians)
-    number of bins is selected as 
-    '''
+    for pair_id in phase_diff_result:
+        pair_result = phase_diff_result[pair_id]
+        if not pair_result['mpfc_channel'] in mpfc_channels:
+            mpfc_channels.append(pair_result['mpfc_channel'])
+        if not pair_result['vhipp_channel'] in vhipp_channels:
+            vhipp_channels.append(pair_result['vhipp_channel'])
+    mpfc_channels.sort()
+    vhipp_channels.sort()
 
-    phase_mpfc = column_by_pad(get_phase(data, 'mpfc', band))
-    power_mpfc = column_by_pad(get_power(data, 'mpfc', band))
-    phase_vhipp = column_by_pad(get_phase(data, 'vhipp', band))
-    power_vhipp = column_by_pad(get_power(data, 'vhipp', band))
-    
-    mpfc_pads = np.array(phase_mpfc.columns)
-    vhipp_pads = np.array(phase_vhipp.columns)
+    FWHMs = np.zeros((len(mpfc_channels), len(vhipp_channels)))
+    for pair_id in phase_diff_result:
+        pair_result = phase_diff_result[pair_id]
+        FWHMs[mpfc_channels.index(pair_result['mpfc_channel']), vhipp_channels.index(pair_result['vhipp_channel'])] = \
+            pair_result['FWHM']
 
-    if axs == None:
-        fig, axs = plt.subplots(6, 6, 
-            figsize=(6*6, 12*6), tight_layout=True, sharey=True)
-
-    FWHM = []
-    phase_diff_peakpos = []
-    mpfc_padid = mpfc_pads[mpfc_index]
-
-    for i in range(len(vhipp_pads)):
-        if not vhipp_pads[i] in exclude:
-            vhipp_padid = vhipp_pads[i]
-            power_vhipp_curr = np.array(power_vhipp[vhipp_padid])
-            power_vhipp_mean = np.mean(power_vhipp_curr)
-            
-            filtered = []
-            for pos in pointselect:
-                if pos < len(power_vhipp_curr):
-                    if power_vhipp_curr[pos] > power_vhipp_mean:
-                        filtered.append(pos)
-
-            plti = i//6
-            pltj = i-plti*6
-
-            phase_diff = np.unwrap(np.array(phase_mpfc[mpfc_padid])) - np.unwrap(np.array(phase_vhipp[vhipp_padid]))
-            phase_diff_filtered = phase_diff[filtered]
-            phase_diff_filtered = (phase_diff_filtered + np.pi) % (2.0 * np.pi) - np.pi
-            # print(len(phase_diff_filtered),' ', len(phase_diff))
-
-            # add_pos = np.where(np.logical_and(-2*np.pi <= phase_diff_filtered, phase_diff_filtered < -np.pi))
-            # phase_diff_filtered[add_pos] += 2*np.pi
-            # sub_pos = np.where(np.logical_and(np.pi <= phase_diff_filtered, phase_diff_filtered < 2*np.pi))
-            # phase_diff_filtered[sub_pos] -= 2*np.pi
-            # phase_diff_filtered = np.unwrap(phase_diff_filtered)
-
-            n,bins,patches = axs[plti, pltj].hist(phase_diff_filtered, bins=nbins, alpha=1)
-            axs[plti, pltj].set_title('mPFC_pad'+str(mpfc_padid)+'-vHPC_pad'+str(vhipp_padid), fontsize=16)
-            axs[plti, pltj].xaxis.set_major_locator(plt.MultipleLocator(np.pi))
-            axs[plti, pltj].xaxis.set_major_formatter(plt.FuncFormatter(multiple_formatter()))
-            axs[plti, pltj].grid(True)
-            axs[plti, pltj].tick_params(axis='both', which='major', labelsize=10)
-
-            difference = np.max(n) - np.min(n)
-            HM = difference / 2.0
-            pos_extremum = n.argmax()
-            nearest_above = (np.abs(n[pos_extremum:-1] - HM)).argmin()
-            nearest_below = (np.abs(n[0:pos_extremum] - HM)).argmin()
-            FWHM.append(np.mean(bins[nearest_above + pos_extremum]) - np.mean(bins[nearest_below]))
-            
-            bin_max = np.where(n == np.max(n))
-            phase_diff_peakpos.append(bins[bin_max][0])
-
-    # Create a big subplot
-    ax = fig.add_subplot(111, frameon=False)
-    # hide tick and tick label of the big axes
-    plt.tick_params(labelcolor='none', top='off', bottom='off', left='off', right='off')
-
-    ax.set_xlabel('Phase lag (rad)', labelpad=18, fontsize=14) # Use argument `labelpad` to move label downwards.
-    ax.set_ylabel('Counts', labelpad=18, fontsize=14)
-    plt.savefig(fname)
-    plt.show()
-
-    return FWHM, phase_diff_peakpos
+    FWHMs_return = {
+        'mpfc_channels': mpfc_channels,
+        'vhipp_channels': vhipp_channels,
+        'FWHMs': FWHMs
+    }
+    return FWHMs_return
 
 
-def plot_seg_lags(animal, session, seglen, power_mpfc, power_vhipp, mpfc_pads, vhipp_pads, mpfc_chid, vhipp_chid, segs, savedir, beh_srate=50, srate=500):
-    vhipp_mean = np.mean(np.array(power_vhipp[vhipp_pads[vhipp_chid]]))
-    pair_lags = []
-    for seg in segs:
-        segstart = seg / beh_srate
-        segend = segstart + seglen
-        crop_from = int(segstart * srate)
-        crop_to = int(segend * srate)
-        power_mpfc_crop = np.array(power_mpfc[mpfc_pads[mpfc_chid]])[crop_from:crop_to]
-        power_vhipp_crop = np.array(power_vhipp[vhipp_pads[vhipp_chid]])[crop_from:crop_to]
-        vhipp_mean_crop = np.mean(power_vhipp_crop)
-        if vhipp_mean_crop > vhipp_mean:
-            corr = correlate(power_mpfc_crop, power_vhipp_crop, mode="full")
-            corr /= np.max(corr)
-            lags = correlation_lags(len(power_mpfc_crop), len(power_vhipp_crop), mode="full") / srate * 1000
-            lag = lags[np.argmax(corr)]
-            pair_lags.append(lag)
+def get_lag(sig1, sig2, srate=500):
+    corr = correlate(sig1, sig2, mode="full")
+    corr /= np.max(corr)
+    lags = correlation_lags(len(sig1), len(sig2), mode="full") / srate * 1000
+    lag = lags[np.argmax(corr)]
 
-    pair_lags_all = np.array(pair_lags).flatten()
-    w, p = wilcoxon(pair_lags_all)
-    
-    plt.figure(figsize=(10,16))
-    fig, ax = plt.subplots()
-    ax.axvline(x=0, ymin=0, ymax=100, color='k', linestyle='--', alpha=0.2)
-
-    bin_edges = np.linspace(-int(seglen*srate*2), int(seglen*srate*2), num=int(seglen*srate*2))
-    n, bins, patches = ax.hist(pair_lags_all, bin_edges, histtype='stepfilled')
-    peak_value = np.max(n)
-    bin_max = np.where(n == peak_value)
-    peakpos = bins[bin_max][0]
-    medianpos = np.median(pair_lags_all)
-    meanpos = np.mean(pair_lags_all)
-    ax.tick_params(axis='both', which='major', labelsize=8)
-    ax.set_xlabel('Time lag (ms)', labelpad=18, fontsize=12)
-    ax.set_ylabel('Counts of time segments', labelpad=18, fontsize=12)
-    ax.set_title('Time lags of channel pair ' + str(mpfc_pads[mpfc_chid]) + '-' + str(vhipp_pads[vhipp_chid]) + ' across time intervals', fontsize=14)
-    plt.savefig(savedir+animal[session]+ str(mpfc_pads[mpfc_chid]) + '_' + str(vhipp_pads[vhipp_chid])+ '_allseglags.jpg', bbox_inches = 'tight')
-    plt.show()
-    
-    return peakpos, medianpos, meanpos, w, p
+    return lag, lags, corr
 
 
-def plot_crosscorr(data, fname, pointselect, band='theta', exclude=[], mpfc_index=0, srate=500, tstart=30, twin=600, axs=None, showfig=True):
-    start = int(tstart * srate)
-    end = int((tstart + twin) * srate)
-
+def get_seg_lags(data, animal, session, tstart, twin, exclude, seglen, select_idx, band='theta', srate=500, beh_srate=50):
     power_mpfc = column_by_pad(get_power(data, 'mpfc', band))
     power_vhipp = column_by_pad(get_power(data, 'vhipp', band))
+    results = {}
+    
+    segs = []
+    maxtime = int((tstart + twin) * beh_srate)
 
-    mpfc_pads = np.array(power_mpfc.columns)
-    vhipp_pads = np.array(power_vhipp.columns)
+    pos = 0
+    segstart = pos
 
-    if axs == None:
-        fig, axs = plt.subplots(6, 6, 
-            figsize=(6*6, 12*6), tight_layout=True)
+    while pos < maxtime:
+        while (not pos in select_idx) and (pos < maxtime):
+            pos += 1
+        segstart = pos
+        count = 0
+        if pos in select_idx:
+            while count < int(beh_srate * seglen) and pos in select_idx:
+                count += 1
+                pos += 1
+        if count >= int(beh_srate * seglen):
+            segs.append(segstart)
+        else:
+            pos += 1
+        pos += random.randint(1,5)
+    print('Number of time segments extracted: ', len(segs))
+    results.update({'segment_starts':segs})
 
-    lags_currmpfc = []
-    mpfc_padid = mpfc_pads[mpfc_index]
+    pairid = 0
+    for mpfc_ch in np.array(power_mpfc.columns):
+        for vhipp_ch in np.array(power_vhipp.columns):
+            if (not mpfc_ch in exclude) and (not vhipp_ch in exclude):
+                vhipp_mean = np.mean(np.array(power_vhipp[vhipp_ch]))
+                pair_result = {}
+                pair_lags = []
+                for seg in segs:
+                    segstart = seg / beh_srate
+                    segend = segstart + seglen
+                    crop_from = int(segstart * srate)
+                    crop_to = int(segend * srate)
+                    power_mpfc_crop = np.array(power_mpfc[mpfc_ch])[crop_from:crop_to]
+                    power_vhipp_crop = np.array(power_vhipp[vhipp_ch])[crop_from:crop_to]
+                    vhipp_mean_crop = np.mean(power_vhipp_crop)
+                    if vhipp_mean_crop > vhipp_mean:
+                        lag, lags, corr = get_lag(power_mpfc_crop, power_vhipp_crop)
+                        pair_lags.append(lag)
+                
+                pair_result.update({'mpfc_channel':mpfc_ch, 'vhipp_channel':vhipp_ch, 'allseg_lags': pair_lags})
+                pair_lags_all = np.array(pair_lags).flatten()
+                medianpos = np.median(pair_lags_all)
+                meanpos = np.mean(pair_lags_all)
+                w, p = wilcoxon(pair_lags_all)
+                bin_edges = np.linspace(-int(seglen*srate*2), int(seglen*srate*2), num=int(seglen*srate*2))
+                hist, _ = np.histogram(pair_lags_all, bin_edges)
+                bin_max = np.where(hist == np.max(hist))
+                pair_result.update({'wilcox_p': p, 'mean_lag':meanpos, 'median_lag': medianpos, 'peak_lag': bin_edges[bin_max][0]})
 
-    for i in range(len(vhipp_pads)):
-        if not vhipp_pads[i] in exclude:
-            vhipp_padid = vhipp_pads[i]
+                results.update({pairid: pair_result})
+                pairid += 1
 
-            plti = i//6
-            pltj = i-plti*6
-
-            power_vhipp_curr = np.array(power_vhipp[vhipp_padid])[start:end]
-            power_mpfc_curr = np.array(power_mpfc[mpfc_padid])[start:end]
-            power_vhipp_mean = np.mean(power_vhipp_curr)
-            
-            filtered = []
-            for pos in pointselect:
-                if pos < len(power_vhipp_curr):
-                    if power_vhipp_curr[pos] > power_vhipp_mean:
-                        filtered.append(pos)
-
-            power_vhipp_filtered = power_vhipp_curr[filtered]
-            power_mpfc_filtered = power_mpfc_curr[filtered]
-            
-            corr = correlate(power_mpfc_filtered, power_vhipp_filtered)
-            corr /= np.max(corr)
-            lags = correlation_lags(len(power_mpfc_filtered), len(power_vhipp_filtered)) / srate * 1000
-            lag = lags[np.argmax(corr)]
-
-            axs[plti, pltj].set_title('mPFC_pad'+str(mpfc_padid)+'-vHPC_pad'+str(vhipp_padid), fontsize=16)
-            axs[plti, pltj].scatter([lag], corr[np.argmax(corr)], color='red', s=50)
-            axs[plti, pltj].axvline(x=0, color='k', linestyle='--')
-            axs[plti, pltj].plot(lags, corr)
-            axs[plti, pltj].tick_params(axis='both', which='major', labelsize=14)
-            axs[plti, pltj].set_xlim(-40,40)
-            axs[plti, pltj].set_xlabel('Lag (ms)', fontsize=18)
-            axs[plti, pltj].set_ylabel('vHPC-mPFC theta power crosscorr', fontsize=18)
-
-            lags_currmpfc.append(lag)
-
-    plt.savefig(fname)
-    plt.show()
-
-    return lags_currmpfc
+    return results
