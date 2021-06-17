@@ -7,6 +7,7 @@ from tqdm import tqdm
 from scipy.cluster import hierarchy
 from scipy.cluster.hierarchy import fcluster
 from scipy.signal import correlate, correlation_lags
+from scipy.stats import wilcoxon
 from sklearn.cluster import KMeans
 import os
 import sys
@@ -94,14 +95,6 @@ def get_phase(dataset, brain_area, band='theta', f_ephys=500):
 
     # print(phase.shape)
     return phase
-
-
-def get_speed(data):
-    return data['instant_speed']
-
-
-def get_distance(data):
-    return data['accumulative_distance']
 
 
 def sixtyfour_ch_solder_pad_to_zif(zif):  ###
@@ -493,6 +486,68 @@ def multiple_formatter(denominator=2, number=np.pi, latex='\pi'):
     return _multiple_formatter
 
 
+def get_phase_diffs(data, animal, session, tstart, twin, exclude, nbins, select_idx, band='theta', srate=500, beh_srate=50):
+    phase_mpfc = column_by_pad(get_phase(data, 'mpfc', band))
+    phase_vhipp = column_by_pad(get_phase(data, 'vhipp', band))
+    power_mpfc = column_by_pad(get_power(data, 'mpfc', band))
+    power_vhipp = column_by_pad(get_power(data, 'vhipp', band))
+
+    start = int(tstart * srate)
+    end = int((tstart + twin) * srate)
+
+    points = []
+    for i in range(start, end):
+        beh_time_to_start = int(i / srate * beh_srate)
+        if select_idx is not None:
+            if beh_time_to_start in select_idx:
+                points.append(i)
+        else:
+            points.append(i)
+    print(str(len(points)) + ' out of ' + str(end-start) + ' ephys sample points selected (behavior)')
+
+    results = {}
+    pairid = 0
+    for mpfc_ch in np.array(phase_mpfc.columns):
+        for vhipp_ch in np.array(phase_vhipp.columns):
+            if (not mpfc_ch in exclude) and (not vhipp_ch in exclude):
+                pair_result = {}
+                power_vhipp_curr = np.array(power_vhipp[vhipp_ch])
+                power_vhipp_mean = np.mean(power_vhipp_curr)
+                filtered = []
+                for pos in points:
+                    if pos < len(power_vhipp_curr):
+                        if power_vhipp_curr[pos] > power_vhipp_mean:
+                            filtered.append(pos)
+                    else:
+                        break
+
+                phase_diff = np.unwrap(np.array(phase_mpfc[mpfc_ch])) - np.unwrap(np.array(phase_vhipp[vhipp_ch]))
+                phase_diff_filtered = phase_diff[filtered]
+                phase_diff_filtered = (phase_diff_filtered + np.pi) % (2.0 * np.pi) - np.pi
+                pair_result.update({'mpfc_channel':mpfc_ch, 'vhipp_channel':vhipp_ch, 'phase_diff_filtered': phase_diff_filtered})
+
+                bin_edges = np.linspace(-np.pi, np.pi, num=nbins+1)
+                hist, _ = np.histogram(phase_diff_filtered, bins=bin_edges)
+                bin_max = np.where(hist == np.max(hist))
+                pair_result.update({'peak_position': bin_edges[bin_max][0]})
+
+                difference = np.max(hist) - np.min(hist)
+                HM = difference / 2.0
+                pos_extremum = hist.argmax()
+                nearest_above = (np.abs(hist[pos_extremum:-1] - HM)).argmin()
+                nearest_below = (np.abs(hist[0:pos_extremum] - HM)).argmin()
+                HM_right = np.mean(bin_edges[nearest_above + pos_extremum])
+                HM_left = np.mean(bin_edges[nearest_below])
+                pair_result.update({'HM_right': HM_right,'HM_left': HM_left})
+                pair_result.update({'FWHM': HM_right - HM_left})
+
+                results.update({pairid: pair_result})
+                pairid += 1
+
+    return results
+
+
+
 def plot_phase_coh(data, fname, pointselect, band='theta', exclude=[], mpfc_index=0, nbins=60, axs=None, showfig=True):
     '''
     plot representative histogram of theta phase differences in a specific period
@@ -593,6 +648,8 @@ def plot_seg_lags(animal, session, seglen, power_mpfc, power_vhipp, mpfc_pads, v
             pair_lags.append(lag)
 
     pair_lags_all = np.array(pair_lags).flatten()
+    w, p = wilcoxon(pair_lags_all)
+    
     plt.figure(figsize=(10,16))
     fig, ax = plt.subplots()
     ax.axvline(x=0, ymin=0, ymax=100, color='k', linestyle='--', alpha=0.2)
@@ -603,6 +660,7 @@ def plot_seg_lags(animal, session, seglen, power_mpfc, power_vhipp, mpfc_pads, v
     bin_max = np.where(n == peak_value)
     peakpos = bins[bin_max][0]
     medianpos = np.median(pair_lags_all)
+    meanpos = np.mean(pair_lags_all)
     ax.tick_params(axis='both', which='major', labelsize=8)
     ax.set_xlabel('Time lag (ms)', labelpad=18, fontsize=12)
     ax.set_ylabel('Counts of time segments', labelpad=18, fontsize=12)
@@ -610,7 +668,7 @@ def plot_seg_lags(animal, session, seglen, power_mpfc, power_vhipp, mpfc_pads, v
     plt.savefig(savedir+animal[session]+ str(mpfc_pads[mpfc_chid]) + '_' + str(vhipp_pads[vhipp_chid])+ '_allseglags.jpg', bbox_inches = 'tight')
     plt.show()
     
-    return peakpos, medianpos
+    return peakpos, medianpos, meanpos, w, p
 
 
 def plot_crosscorr(data, fname, pointselect, band='theta', exclude=[], mpfc_index=0, srate=500, tstart=30, twin=600, axs=None, showfig=True):

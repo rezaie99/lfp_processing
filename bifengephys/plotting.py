@@ -91,6 +91,86 @@ def plot_mean_ci(data, duration=300):
     ci95 = sms.DescrStatsW(data).tconfint_mean()
     plt.fill_between(t[:duration * srate], ci95[0][:duration * srate], ci95[1][:duration * srate], alpha=0.3)
     plt.show()
+
+
+def pair_power_phase(data, animal, session, mpfc_ch, vhipp_ch, tstart=0, twin=20, srate=500, band='theta'):
+    start = int(tstart * srate)
+    end = int((tstart + twin) * srate)
+
+    power_mpfc = np.array(ephys.column_by_pad(ephys.get_power(data, 'mpfc', band))[mpfc_ch])[start:end]
+    power_vhipp = np.array(ephys.column_by_pad(ephys.get_power(data, 'vhipp', band))[vhipp_ch])[start:end]
+
+    phase_mpfc = np.array(ephys.column_by_pad(ephys.get_phase(data, 'mpfc', band))[mpfc_ch])[start:end]
+    phase_vhipp = np.array(ephys.column_by_pad(ephys.get_phase(data, 'vhipp', band))[vhipp_ch])[start:end]
+
+    fig, axs = plt.subplots(2, 1, figsize=(10, 10), sharex=True)
+    time = np.linspace(tstart, tstart+twin, num=end-start)
+    axs[0].set_title('Instantaneous theta amplitude', fontsize=16)
+    axs[0].plot(time, power_mpfc, 'b', label='mPFC')
+    axs[0].plot(time, power_vhipp, 'r', label='vHPC')
+    axs[0].set_ylabel('mV')
+    axs[0].tick_params(axis='both', which='major', labelsize=10)
+    axs[0].legend(fontsize=10)
+
+    axs[1].set_title('Instantaneous theta phase', fontsize=16)
+    axs[1].plot(time, phase_mpfc, 'b', label='mPFC')
+    axs[1].plot(time, phase_vhipp, 'r', label='vHPC')
+    axs[1].set_ylabel('rad')
+    axs[1].set_xlabel('Time from start (s)')
+    axs[1].set_yticks([-np.pi, 0, np.pi])
+    axs[1].set_yticklabels([r'$-\pi$', r'$0$', r'$\pi$'])
+    axs[1].tick_params(axis='both', which='major', labelsize=10)
+    axs[1].legend(fontsize=10)
+
+    fig.suptitle('mPFC pad'+str(mpfc_ch)+' - vHPC pad'+str(vhipp_ch)+' example plot', fontsize=18)
+
+    plt.show()
+
+
+def plot_pair_phase_diff(pair_result, fname, nbins=64):
+    plt.figure(figsize=(8, 16))
+    bin_edges = np.linspace(-np.pi, np.pi, num=nbins+1)
+    n, bins, patches = plt.hist(pair_result['phase_diff_filtered'], bin_edges)
+    plt.axvline(x=pair_result['HM_left'], ymin=0, ymax=1000, color='r', linestyle='--')
+    plt.axvline(x=pair_result['HM_right'], ymin=0, ymax=1000, color='r', linestyle='--')
+    plt.axvline(x=pair_result['peak_position'], ymin=0, ymax=1000, color='k', linestyle='-')
+    xticks = [-np.pi, 0, np.pi]
+    plt.xticks(xticks, [r'$-\pi$', r'$0$', r'$\pi$'], fontsize=10)
+    plt.xlabel('Phase lag (rad)', fontsize=12)
+    plt.yticks(fontsize=10)
+    plt.ylabel('Counts', fontsize=12)
+    mpfc_ch = pair_result['mpfc_channel']
+    vhipp_ch = pair_result['vhipp_channel']
+    plt.title('mPFC_pad'+str(mpfc_ch)+'-vHPC_pad'+str(vhipp_ch), fontsize=16)
+    plt.savefig(fname)
+    plt.show()
+
+
+def plot_phase_diffs(results, savedir):
+    peak_positions = []
+    for pairid in results:
+        pair_result = results[pairid]
+        mpfc_ch = pair_result['mpfc_channel']
+        vhipp_ch = pair_result['vhipp_channel']
+        plot_pair_phase_diff(pair_result, fname=savedir+'mPFC_pad'+str(mpfc_ch)+'_vHPC_pad'+str(vhipp_ch)+'_phasediff.jpg')
+        peak_positions.append(pair_result['peak_position'])
+
+    peak_positions_all = np.array(peak_positions).flatten()
+    plt.figure(figsize=(10,10))
+    fig, ax = plt.subplots()
+    bin_edges = np.linspace(-np.pi, np.pi, num=64)
+    n, bins, patches = ax.hist(peak_positions_all, bin_edges, histtype='stepfilled')
+    xticks = np.arange(-np.pi/4, np.pi/4+np.pi/16, np.pi/16)
+    ax.set_xticks(xticks)
+    ax.set_xticklabels([r'$-\pi/4$', r'$-3\pi/16$', r'$-\pi/8$', r'$-\pi/16$', r'$0$', r'$\pi/16$', r'$\pi/8$', r'$3\pi/16$', r'$\pi/4$'])
+    ax.axvline(x=0, ymin=0, ymax=100, color='k', linestyle='--')
+    ax.tick_params(axis='both', which='major', labelsize=10)
+    ax.set_xlim(-np.pi/3, np.pi/3)
+    ax.set_xlabel('Phase difference (rad)', labelpad=18, fontsize=14)
+    ax.set_ylabel('Counts of channel pairs', labelpad=18, fontsize=14)
+    ax.set_title('Peak phase lags across all vHPC-mPFC pairs', fontsize=18)
+    plt.savefig(savedir+'phase_diff_all.jpg', bbox_inches = 'tight')
+    plt.show()
     
 
 def plot_phase_coh_pairs(data, animal, session, savedir, band='theta', exclude=[], srate=500, beh_srate=50, tstart=0, twin=600, nbins=64, axs=None, showfig=True, select_idx=None):
@@ -203,14 +283,22 @@ def plot_seg_lags_pairs(data, animal, session, savedir, seglen=1.0, band='theta'
     
     timelag_peakpos = []
     timelag_medianpos = []
+    timelag_meanpos = []
+    tot = 0
+    significant = 0
     
     for mpfc_chid in range(len(mpfc_pads)):
         for vhipp_chid in range(len(vhipp_pads)):
             if (not vhipp_pads[vhipp_chid] in exclude) and (not mpfc_pads[mpfc_chid] in exclude):
-                peakpos, medianpos = ephys.plot_seg_lags(animal, session, seglen, power_mpfc, power_vhipp, mpfc_pads, vhipp_pads, mpfc_chid, vhipp_chid, segs, savedir, beh_srate=50, srate=500)
+                peakpos, medianpos, meanpos, w, p = ephys.plot_seg_lags(animal, session, seglen, power_mpfc, power_vhipp, mpfc_pads, vhipp_pads, mpfc_chid, vhipp_chid, segs, savedir, beh_srate=50, srate=500)
+                tot += 1
+                if p < 0.05:
+                    significant += 1
                 timelag_peakpos.append(peakpos)
                 timelag_medianpos.append(medianpos)
+                timelag_meanpos.append(meanpos)
     
+    print(str(significant) + " out of " + str(tot) + " channel pairs have time lags with significantly asymmetric distribution (p < 0.05).")
     peaks_all = np.array(timelag_peakpos).flatten()
     plt.figure(figsize=(10,16))
     fig, ax = plt.subplots()
@@ -236,6 +324,19 @@ def plot_seg_lags_pairs(data, animal, session, savedir, seglen=1.0, band='theta'
     ax.set_title('Median vHPC-mPFC time lags in all time segments', fontsize=14)
     ax.set_ylim(top=800)
     plt.savefig(savedir+animal[session]+'_median_lags_allpairs.jpg', bbox_inches = 'tight')
+    
+    means_all = np.array(timelag_meanpos).flatten()
+    plt.figure(figsize=(10,16))
+    fig, ax = plt.subplots()
+    bin_edges = np.linspace(-50, 50, num=50)
+    n, bins, patches = ax.hist(means_all, bin_edges, histtype='stepfilled')
+
+    ax.tick_params(axis='both', which='major', labelsize=8)
+    ax.set_xlabel('Time lag (ms)', labelpad=18, fontsize=12)
+    ax.set_ylabel('Counts of mPFC-vHPC channel pairs', labelpad=18, fontsize=12)
+    ax.set_title('Mean vHPC-mPFC time lags in all time segments', fontsize=14)
+    ax.set_ylim(top=250)
+    plt.savefig(savedir+animal[session]+'_mean_lags_allpairs.jpg', bbox_inches = 'tight')
 
 
 def plot_crosscorr_pairs(data, animal, session, savedir, band='theta', exclude=[], srate=500, beh_srate=50, tstart=30, twin=600, axs=None, showfig=True, select_idx=None):
