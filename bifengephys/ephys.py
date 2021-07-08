@@ -575,11 +575,33 @@ def get_FWHM(phase_diff_result):
 
 def get_lag(sig1, sig2, srate=500):
     corr = correlate(sig1, sig2, mode="full")
-    corr /= np.max(corr)
+    # corr /= np.max(corr)
     lags = correlation_lags(len(sig1), len(sig2), mode="full") / srate * 1000
     lag = lags[np.argmax(corr)]
 
     return lag, lags, corr
+
+
+def bootstrap(sig1, sig2, tstart, twin, srate=500, seglen=0.5, offset_min=5, offset_max=10, num=1000):
+    start = int(tstart * srate)
+    end = int((tstart + twin) * srate)
+    corrvalue_max = []
+
+    for i in range(num):
+        seg1_cropfrom = random.randint(start + int((offset_max + seglen) * srate),
+            end - int((offset_max + seglen) * srate))
+        seg1_cropto = int(seg1_cropfrom + seglen * srate)
+        offset = random.uniform(offset_min, offset_max)
+        backforth = random.choice((-1, 1))
+        seg2_cropfrom = seg1_cropfrom + int(backforth * offset * srate)
+        seg2_cropto = int(seg2_cropfrom + seglen * srate)
+
+        seg1 = sig1[seg1_cropfrom:seg1_cropto]
+        seg2 = sig2[seg2_cropfrom:seg2_cropto]
+        lag, lgas, corr = get_lag(seg1, seg2)
+        corrvalue_max.append(np.max(corr))
+    
+    return np.array(corrvalue_max)
 
 
 def get_seg_lags(data, animal, session, tstart, twin, exclude, seglen, select_idx, band='theta', srate=500, beh_srate=50):
@@ -612,22 +634,42 @@ def get_seg_lags(data, animal, session, tstart, twin, exclude, seglen, select_id
 
     pairid = 0
     for mpfc_ch in np.array(power_mpfc.columns):
+        print('mPFC-ch-' + str(mpfc_ch))
         for vhipp_ch in np.array(power_vhipp.columns):
             if (not mpfc_ch in exclude) and (not vhipp_ch in exclude):
-                vhipp_mean = np.mean(np.array(power_vhipp[vhipp_ch]))
+                power_vhipp_np = np.array(power_vhipp[vhipp_ch])
+                vhipp_mean = np.mean(power_vhipp_np)
+                power_vhipp_np_nodc = power_vhipp_np - vhipp_mean
+                power_mpfc_np = np.array(power_mpfc[mpfc_ch])
+                mpfc_mean = np.mean(power_mpfc_np)
+                power_mpfc_np_nodc = power_mpfc_np - mpfc_mean
+
+                corr_maxs = bootstrap(power_mpfc_np_nodc, power_vhipp_np_nodc, tstart, twin)
+                pass_corr = np.percentile(corr_maxs, 90)
+
                 pair_result = {}
                 pair_lags = []
+                range_rej = 0
+                value_rej = 0
                 for seg in segs:
                     segstart = seg / beh_srate
                     segend = segstart + seglen
                     crop_from = int(segstart * srate)
                     crop_to = int(segend * srate)
-                    power_mpfc_crop = np.array(power_mpfc[mpfc_ch])[crop_from:crop_to]
-                    power_vhipp_crop = np.array(power_vhipp[vhipp_ch])[crop_from:crop_to]
+                    power_mpfc_crop_nodc = power_mpfc_np_nodc[crop_from:crop_to]
+                    power_vhipp_crop_nodc = power_vhipp_np_nodc[crop_from:crop_to]
+                    power_vhipp_crop = power_vhipp_np[crop_from:crop_to]
                     vhipp_mean_crop = np.mean(power_vhipp_crop)
                     if vhipp_mean_crop > vhipp_mean:
-                        lag, lags, corr = get_lag(power_mpfc_crop, power_vhipp_crop)
-                        pair_lags.append(lag)
+                        lag, lags, corr = get_lag(power_mpfc_crop_nodc, power_vhipp_crop_nodc)
+                        if np.max(corr) > pass_corr and -100<=lag<=100:
+                            pair_lags.append(lag)
+                        if not -100<=lag<=100:
+                            range_rej += 1
+                        if not np.max(corr) > pass_corr:
+                            value_rej += 1
+                print('rejected by out-of-100ms-range: ' + str(range_rej))
+                print('rejected not-passing-bootstrap: ' + str(value_rej))
                 
                 pair_result.update({'mpfc_channel':mpfc_ch, 'vhipp_channel':vhipp_ch, 'allseg_lags': pair_lags})
                 pair_lags_all = np.array(pair_lags).flatten()

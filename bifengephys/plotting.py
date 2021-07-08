@@ -152,7 +152,7 @@ def pair_power_lag(data, animal, session, mpfc_ch, vhipp_ch, tstart=0, twin=20, 
     axs[1].scatter([lag], corr[np.argmax(corr)], color='red', s=50)
     axs[1].axvline(x=0, color='k', linestyle='--')
     axs[1].set_ylabel('vHPC-mPFC theta power crosscorr')
-    axs[1].set_xlim(-100,100)
+    axs[1].set_xlim(-200,200)
     axs[1].set_xlabel('Lag (ms)')
     axs[1].tick_params(axis='both', which='major', labelsize=10)
 
@@ -216,7 +216,7 @@ def plot_FWHM(FWHM_result, savedir, plottype):
 
     fig, ax = plt.subplots(figsize=(10,10))
 
-    if plottype == 'diff':
+    if plottype.startswith('diff'):
         # define the colormap
         cmap = plt.get_cmap('PuOr')
         # extract all colors from the .jet map
@@ -224,13 +224,13 @@ def plot_FWHM(FWHM_result, savedir, plottype):
         # create the new map
         cmap = cmap.from_list('Custom cmap', cmaplist, cmap.N)
         # define the bins and normalize and forcing 0 to be part of the colorbar!
-        bounds = np.arange(-1, 1,.1)
+        bounds = np.arange(-1, 1,.05)
         idx=np.searchsorted(bounds,0)
         bounds=np.insert(bounds,idx,0)
         norm = BoundaryNorm(bounds, cmap.N)
         im = ax.imshow(FWHMs, interpolation='none',norm=norm,cmap=cmap)
     else:
-        im = ax.imshow(FWHMs, vmin=0.0, vmax=np.pi)
+        im = ax.imshow(FWHMs, vmin=0.5, vmax=2.0)
 
     ax.set_xticks(np.arange(len(vhipp_ch_labels)))
     ax.set_yticks(np.arange(len(mpfc_ch_labels)))
@@ -266,7 +266,7 @@ def plot_lagstats(lagstat, savedir, plottype):
     ax.set_xlabel('Time lag (ms)', labelpad=18, fontsize=12)
     ax.set_ylabel('Counts of mPFC-vHPC channel pairs', labelpad=18, fontsize=12)
     ax.set_title(plottype + ' vHPC-mPFC time lag occurrance distribution', fontsize=14)
-    ax.set_ylim(top=800)
+    ax.set_ylim(top=200)
     plt.savefig(savedir + plottype + '_lags_allpairs.jpg', bbox_inches = 'tight')
 
 
@@ -287,7 +287,8 @@ def plot_seg_lags(results, savedir, seglen=0.5, srate=500):
         pair_lags = pair_result['allseg_lags']
         plt.figure(figsize=(10,16))
         fig, ax = plt.subplots()
-        bin_edges = np.linspace(-int(seglen*srate*2), int(seglen*srate*2), num=int(seglen*srate*2))
+        # bin_edges = np.linspace(-int(seglen*srate*2), int(seglen*srate*2), num=int(seglen*srate*2))
+        bin_edges = np.linspace(-100, 100, num=100)
         pair_lags_all = np.array(pair_lags).flatten()
         n, bins, patches = ax.hist(pair_lags_all, bin_edges, histtype='stepfilled')
         ax.tick_params(axis='both', which='major', labelsize=8)
