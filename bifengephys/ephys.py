@@ -12,11 +12,8 @@ from sklearn.cluster import KMeans
 import random
 
 
-def load_data(base_dir, session):
-    print(session)
-    # file = 'D:\\ephys\\' + session + '\\ephys_processed\\' + session + '_dataset.pkl'
-    file = base_dir + session + '/ephys_processed/' + session + '_dataset.pkl' 
-    # with open(session + '/ephys_processed/' + session + '_dataset.pkl', "rb") as f:
+def load_data(session):
+    file = session + '/ephys_processed/' + session + '_dataset.pkl'
     with open(file, 'rb') as f:
         data = pickle.load(f)
         f.close()
@@ -30,7 +27,7 @@ def get_ch(data, brain_area):
         return data['info']['ch_names']['ch_' + brain_area]
 
 
-def get_lfp(dataset, brain_area, f_ephys=500):
+def get_lfp(dataset, brain_area, f_ephys=500): ## get the lfp data, crop out the part before trigger
     print(dataset['lfp']['amplifier_data'].shape)
     ephys_trigger = dataset['info']['ephys_trigger']
     crop_from = int(f_ephys * ephys_trigger)

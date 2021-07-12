@@ -3,7 +3,7 @@ from matplotlib.colors import BoundaryNorm
 import statsmodels.stats.api as sms
 import numpy as np
 from scipy import signal
-import ephys
+import bifengephys.ephys
 import os
 
 
