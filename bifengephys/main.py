@@ -374,7 +374,7 @@ print(info)
 
 lfp_filted = mne.filter.filter_data(data=lfp.T, sfreq=500, l_freq=1, h_freq=None)
 
-raw_arena = mne.io.RawArray(lfp_filted*1e-6, info) ### mne data format (n-channels, n-samples), unit = V
+raw_arena = mne.io.RawArray(lfp_filted, info) ### mne data format (n-channels, n-samples), unit = V
 
 #%%
 raw_arena.plot(n_channels = 46, duration=2, scalings='auto')
@@ -470,20 +470,69 @@ freqs : ndarray, shape (n_freqs,)
         The frequencies in Hz.
 '''
 
-test1 = raw_arena.copy()
-test1 = mne.make_fixed_length_epochs(test1, duration=2.6)
+test = raw_arena.copy()
+test = mne.make_fixed_length_epochs(test, duration=2.6)
 freqs = np.array([4, 5, 6, 7, 8, 9, 10, 11, 12])
-power = mne.time_frequency.tfr_multitaper(test1, freqs=freqs, n_cycles=7,
-                                          return_itc=False, n_jobs=20, picks=[8, 40], average=False)
+power = mne.time_frequency.tfr_multitaper(test, freqs=freqs, n_cycles=7,
+                                          return_itc=False, n_jobs=20, picks=None, average=False)
 
 #%%
 p = power.data
 
 #%%
-p = np.sum(p, axis=2)
+p = np.mean(p, axis=3).sum(axis=2)
 #%%
-p = p.mean(axis=2)
-corr = np.corrcoef(p, rowvar=False)
+for _ in range(p.shape[1]):
+    plt.plot(p[:, _])
+
+plt.show()
+
+#%%
+# ch_mpfc = [1:16]
+# ch_vhipp = [10:16]
+
+pwr_mpfc = p[:, [1, 2, 3, 4, 5, 7, 8, 9, 10, 11]]
+pwr_vhipp = p[:, 34:40]
+
+#%%
+
+#%%
+# correlate all channels in vHPC with all the channels in the mPFC
+df_arena_mpfc = pd.DataFrame(pwr_mpfc)
+df_arena_vhipp = pd.DataFrame(pwr_vhipp)
+
+corr_matrix = []
+for column in df_arena_vhipp:
+    corr = df_arena_mpfc.corrwith(df_arena_vhipp[column])
+    corr_matrix.append(corr)
+
+corr_matrix = np.array(corr_matrix)
+
+#%%
+plt.imshow(corr_matrix)
+plt.xlabel('Pads in the mPFC')
+plt.ylabel('Pads in the vHPC')
+plt.colorbar(label='Pearson coefficient')
+plt.show()
+
+#%%
+fig, ax = plt.subplots()
+for _ in range(corr_matrix.shape[0]):
+    ax.plot(corr_matrix[_, :])
+
+plt.xlabel('Pads in the mPFC')
+plt.ylabel('Pearson coefficient')
+plt.show()
+
+#%%
+fig, ax = plt.subplots()
+for _ in range(corr_matrix.shape[0]):
+    ax.plot(corr_matrix[:, _])
+
+plt.xlabel('Pads in the vHPC')
+plt.ylabel('Pearson coefficient')
+plt.show()
+
 #%%
 ''''
 mne.filter.filter_data(data, sfreq, l_freq, h_freq, picks=None, filter_length='auto', 
@@ -572,7 +621,7 @@ t_arena.plot(n_channels = 46, duration=5, scalings='auto')
 ## 2, compute the sum theta power of 2.6 second
 
 mpfc_ch = np.arange(0, 23).tolist()
-vhipp_ch = np.arange(23, 45).tolist()
+vhipp_ch = np.arange(24, 45).tolist()
 
 # tpower_arena_bef_mpfc = tpower_arena_bef_epoch.get_data(picks=mpfc_ch).sum(axis=2)
 # tpower_arena_bef_vhipp = tpower_arena_bef_epoch.get_data(picks=vhipp_ch).sum(axis=2)
