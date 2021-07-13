@@ -20,6 +20,7 @@ def load_data(session):
     return data
 
 
+
 def get_ch(data, brain_area):
     if brain_area == 'all':
         return sum(data['info']['ch_names'].values(), [])
