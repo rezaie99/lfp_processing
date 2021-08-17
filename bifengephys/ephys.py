@@ -20,29 +20,27 @@ def load_data(session):
     return data
 
 
+#
+# def get_ch(data, brain_area):
+#     if brain_area == 'all':
+#         return sum(data['info']['ch_names'].values(), [])
+#     else:
+#         return data['info']['ch_names']['ch_' + brain_area]
 
-def get_ch(data, brain_area):
-    if brain_area == 'all':
-        return sum(data['info']['ch_names'].values(), [])
-    else:
-        return data['info']['ch_names']['ch_' + brain_area]
+def get_ch(data):
+    return data['info']['ch_names']
 
 
-def get_lfp(dataset, brain_area, f_ephys=500): ## get the lfp data, crop out the part before trigger
+def get_lfp(dataset): ## get the lfp data, crop out the part before trigger
     print(dataset['lfp']['amplifier_data'].shape)
     ephys_trigger = dataset['info']['ephys_trigger']
-    crop_from = int(f_ephys * ephys_trigger)
+    srate = dataset['info']['frequency_para']['downsample freq/hz']
+    crop_from = int(srate * ephys_trigger)
 
-    if brain_area == 'all':
-        lfp = dataset['lfp']['amplifier_data'][:, crop_from:]
-        ch_list = get_ch(dataset, 'all')
-        lfp = pd.DataFrame(data=lfp.T, columns=ch_list)
-    if brain_area == 'mpfc':
-        lfp = dataset['lfp']['amplifier_data'][:len(get_ch(dataset, 'mpfc')), crop_from:]
-        lfp = pd.DataFrame(data=lfp.T, columns=get_ch(dataset, 'mpfc'))
-    if brain_area == 'vhipp':
-        lfp = dataset['lfp']['amplifier_data'][len(get_ch(dataset, 'mpfc')):, crop_from:]
-        lfp = pd.DataFrame(data=lfp.T, columns=get_ch(dataset, 'vhipp'))
+    lfp = dataset['lfp']['amplifier_data'][:, crop_from:]
+    ch_list = get_ch(dataset)
+    lfp = pd.DataFrame(data=lfp.T, columns=ch_list)
+
     print(lfp.shape)
     return lfp
 
@@ -683,3 +681,64 @@ def get_seg_lags(data, animal, session, tstart, twin, exclude, seglen, select_id
                 pairid += 1
 
     return results
+
+
+import scipy.stats
+import scipy.optimize
+import numpy as np
+
+
+def exg_fun(x, a, b, c, u, s, c2, u2, s2):
+    '''
+     General Function for exponent + Gaussain
+    '''
+    return -np.abs(a) * np.exp(-np.abs(b) * x) + c * (1 / ((2 * s * np.pi) ** 0.5)) * np.exp(-((x - u) ** 2) / (2 * s)) \
+                                      + c2* (1/  ((2 * s2* np.pi) ** 0.5)) * np.exp(-((x - u2)**2)  / (2*  s2))
+
+
+def fit_exg(xdata, ydata, bounds=None):
+    '''
+        General Fitting Function
+    '''
+
+    params = [1, 1, 1, 1, 1, 0, 0, 1]
+
+    return scipy.optimize.curve_fit(exg_fun,xdata
+                                           ,ydata,
+                                            p0=params)
+
+
+def exg_auc(xdata, ydata):
+    '''
+    Return Area under the curve (AUC) for Gaussain Function
+    Input: xdata: frquency or independent varaible
+    Input: ydata: the value of spectrum at the given frequency
+
+    Output: Area Under the Curve
+    '''
+    popt, pcov = fit_exg(xdata, ydata)
+    _, _, auc1, _, _,auc2,_,_ = popt
+    return auc1 + auc2
+
+
+def unit_test():
+    '''
+        Unit Test
+    '''
+    xdata = np.linspace(0, 20, 1000)
+    y = exg_fun(xdata, 3, .2, 5, 4, .4)
+    ydata = y + 0.2 * np.random.normal(size=xdata.size)
+
+    popt, pcov = fit_exg(xdata, ydata, bounds=(0, [3., 1., 0.5]))
+
+    plt.plot(xdata, ydata, 'b-', label='data')
+    plt.plot(xdata, exg_fun(xdata, *popt), 'g--',
+             label='fit: a=%5.3f, b=%5.3f, c=%5.3f, u=%5.3f, s=%5.3f' % tuple(popt))
+    plt.legend()
+
+    print(exg_auc(xdata, ydata))
+
+    plt.show()
+
+
+

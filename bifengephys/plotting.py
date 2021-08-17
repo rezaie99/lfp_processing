@@ -307,5 +307,17 @@ def plot_seg_lags(results, savedir, seglen=0.5, srate=500):
     plot_lagstats(allmean, savedir, plottype='mean')
 
 
+def power_correlation_plot(x, y, corr, sdir, title, xlabel, ylabel):
+    plt.figure(figsize=(6,6))
+    plt.scatter(x, y)
+    m, b = np.polyfit(x, y, 1)
+    plt.plot(x, m*x + b)
 
+    title_plot = title + '\n' + 'R sequred = {:.2f}'.format(np.square(corr))
+    plt.gcf().subplots_adjust(bottom=0.15, left=0.18)
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.title(title_plot)
+    plt.savefig(sdir + title + '.png')
+    plt.show()
 

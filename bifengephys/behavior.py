@@ -16,12 +16,12 @@ def load_location(session):
     file_dir = session + '/ephys_processed/'
     print(file_dir)
     fname = glob.glob(file_dir + '*.h5')[0]
-    loc = pd.read_hdf(fname)
+    loc = pd.read_hdf(fname) # read the H5 file from Deeplabcut as a dataframe
     scorer = loc.columns[0][0]  # scorer is the trained network by Deeplabcut for estimate the location of a animal
     return loc, scorer
 
 
-def calib_location(loc_df, behav='ezm', fps=50, THRL=0.95, THRD=5):
+def calib_location(loc_df, task='ezm', fps=50, THRL=0.95, THRD=5):
     scorer = loc_df.columns[0][0]
     bodyparts = loc_df.columns.levels[1].to_list()
     length = len(loc_df)
@@ -47,13 +47,13 @@ def calib_location(loc_df, behav='ezm', fps=50, THRL=0.95, THRD=5):
         # (B) if the likelihood value is below a certain threshold
         # or (C) the point is currently out of frame
         # the video frame is 330 by 330 pixels in size in OFT sessions, but approx. 400 by 400 in EZM sessions
-        if behav == 'ezm':
+        if task == 'ezm':
             XYMAX = 400
-        elif behav == 'epm':
+        elif task == 'epm':
             XYMAX = 450
-        elif behav == 'oft':
+        elif task == 'oft':
             XYMAX = 330
-        elif behav == 'arena':
+        elif task == 'arena':
             XYMAX = 200
         else:
             raise ValueError('Video resolution is not defined for this behavior.')
@@ -67,10 +67,14 @@ def calib_location(loc_df, behav='ezm', fps=50, THRL=0.95, THRD=5):
         process = False
         ## process the entire recording
         for i in range(length):
-            if step_distance[i] > THRD or bd_confidence[i] < THRL or bd_x_new[i] < XMIN or bd_x_new[i] > XMAX or \
-                    bd_y_new[i] < YMIN or bd_y_new[i] > YMAX:
+            if step_distance[i] > THRD or \
+                    bd_confidence[i] < THRL or \
+                    bd_x_new[i] < XMIN or \
+                    bd_x_new[i] > XMAX or \
+                    bd_y_new[i] < YMIN or \
+                    bd_y_new[i] > YMAX:
                 num_processed += 1
-                bd_x_new.loc[i] = np.nan
+                bd_x_new.loc[i] = np.nan # replace the point with nan
                 bd_y_new.loc[i] = np.nan
         # set limit_direction so that consecutive NaNs are filled with interpolation
         bd_x_new = bd_x_new.interpolate(method='linear', limit_direction='both')
@@ -87,7 +91,7 @@ def calib_location(loc_df, behav='ezm', fps=50, THRL=0.95, THRD=5):
         plt.xlim(0, XYMAX)
         plt.ylim(0, XYMAX)
         plt.plot(loc_df[scorer, bd, 'x'], loc_df[scorer, bd, 'y'],
-                 label=bd)
+                 label=bd, alpha=0.4)
 
     # plt.gcf().subplots_adjust(bottom=0.15, left=0.18, right=0.3)
     plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0., fontsize=12)
@@ -105,14 +109,13 @@ def get_locomotion(loc_df, fps=50, move_cutoff=5, avgspd_win=10):
     length = len(loc_df)
     print('total number of frames: ', length)
 
-    for bd in bodyparts:
-        x = loc_df[scorer, bd, 'x']
-        y = loc_df[scorer, bd, 'y']
+    for bp in bodyparts:
+        x = loc_df[scorer, bp, 'x']
+        y = loc_df[scorer, bp, 'y']
 
         x_diff = x.diff().fillna(0)  # x change between neighboring two frames
         y_diff = y.diff().fillna(0)  # y change between neighboring two frames
-        step = np.sqrt(x_diff ** 2 + y_diff ** 2)  # distance of the locations of the animal between two video frames
-        distsum = step.sum()
+        step = np.sqrt(x_diff ** 2 + y_diff ** 2)  # distance between two video frames
         accumulated_distance = step.cumsum()
 
         speed = step * fps  # unit of speed: pixels per second
@@ -121,11 +124,11 @@ def get_locomotion(loc_df, fps=50, move_cutoff=5, avgspd_win=10):
         ismoving = avgspd > move_cutoff
         # acc unit: pixels per timestep squared
 
-        loc_df[scorer, bd, 'speed'] = speed
-        loc_df[scorer, bd, 'avgspd'] = avgspd
-        loc_df[scorer, bd, 'acceleration'] = acceleration
-        loc_df[scorer, bd, 'accumlated_dist'] = accumulated_distance
-        loc_df[scorer, bd, 'ismoving'] = ismoving
+        loc_df[scorer, bp, 'speed'] = speed
+        loc_df[scorer, bp, 'avgspd'] = avgspd
+        loc_df[scorer, bp, 'acceleration'] = acceleration
+        loc_df[scorer, bp, 'accumlated_dist'] = accumulated_distance
+        loc_df[scorer, bp, 'ismoving'] = ismoving
 
     return loc_df
 
@@ -136,7 +139,7 @@ def cart2pol_point(x, y):
     return (rho, phi)
 
 
-def cart2pol(loc_df):
+def cart2pol(loc_df): ## Cartesian coordinate system to Polar coordinate system
     scorer = loc_df.columns[0][0]
     bodyparts = loc_df.columns.levels[1].to_list()
 
@@ -317,7 +320,6 @@ def assign_rois(x, y, rois):
 
 def assign_rois_epm(traj_x, traj_y, traj_x_head, traj_y_head, rois, start_frame, end_frame):
     data_length = len(traj_x)
-
     roi_at_each_frame = []
     for i in range(data_length):
         if start_frame <= i <= end_frame:
@@ -470,7 +472,7 @@ def get_center_exit_events(prev, dest, frame_trans):
     return center_exit_time
 
 
-def get_rois_dists(loc_df, bd, start_frame, end_frame):
+def get_rois_dists(loc_x, loc_y, start_frame, end_frame):
     roi_at_each_frame = []
     rois = []
     dists = []
@@ -511,9 +513,9 @@ def get_rois_dists(loc_df, bd, start_frame, end_frame):
     # print(k3, k4)
     # print(k5, k6)
 
-    scorer = loc_df.columns[0][0]
-    x = loc_df[scorer, bd, 'x']
-    y = loc_df[scorer, bd, 'y']
+    # scorer = loc_df.columns[0][0]
+    x = loc_x
+    y = loc_y
 
     for i in range(len(x)):
         if start_frame <= i <= end_frame:
@@ -776,9 +778,9 @@ def get_nose_dips_epm(in_maze, start_frame, end_frame, fps=50):
     return dip_starttime, dip_stoptime
 
 
-def find_transition_oft(traj_x, traj_y, fps=50):
+def find_transition_oft(loc_x, loc_y, fps=50):
     rois = create_rois(behav='oft')
-    roi_at_each_frame, data_time_inrois = assign_rois(traj_x, traj_y, rois)
+    roi_at_each_frame, data_time_inrois = assign_rois(loc_x, loc_y, rois)
     prev, transitions, frame_trans = get_transitions(roi_at_each_frame)
     transitions_count = {name: transitions.count(name) for name in transitions}
     # average time in each roi (frames)
@@ -912,18 +914,26 @@ def analyze_trajectory_epm(traj_x, traj_y, traj_x_head, traj_y_head, epm_coors, 
     return rois_stats, transitions
 
 
-def analyze_trajectory_ezm(loc_df, bd, start_time, duration, fps=50):
-    # ROI Analysis (EZM)
-    scorer = loc_df.columns[0][0]
-    length = len(loc_df)
-    # start_time unit: seconds
-    # index of the first frame for evaluation
-    start_frame = int(start_time * fps)
-    # index of the last frame for evaluation
-    # duration is time in seconds
-    end_frame = min(int(start_frame + duration * fps), length)
+def ezm_analyzer(loc_df, bd, start_time, duration, fps=50):
+    ''''
+    find the transition event in the elevated zero moze
+    loc_df: coordinates of the mouse
+    bd: the body part to be used (head, shoulder, tail etc.)
+    start_time: alwoys set to zero, in second
+    duration: the duration of data to be analyzed, in seconds
+    fps: frame rate of the video
+    '''
 
-    rois, roi_at_each_frame, data_time_inrois, dists = get_rois_dists(loc_df, bd, start_frame, end_frame)
+    length = len(loc_df)
+    start = int(start_time * fps)
+    end = min(int(start + duration * fps), length)
+
+    scorer = loc_df.columns[0][0]
+    loc_x = loc_df[scorer, bd, 'x']
+    loc_y = loc_df[scorer, bd, 'y']
+
+    rois, roi_at_each_frame, data_time_inrois, dists = get_rois_dists(loc_x, loc_y, start, end)
+
     transitions, prev, frame_trans = get_transitions(roi_at_each_frame)
 
     transitions_count = {name: transitions.count(name) for name in transitions}
@@ -965,18 +975,18 @@ def analyze_trajectory_ezm(loc_df, bd, start_time, duration, fps=50):
     prev, transitions, frame_trans = get_transitions(rois)
 
     open_closed_entrytime, open_closed_exittime, closed_open_entrytime, closed_open_exittime = get_open_closed_events(
-        transitions, prev, frame_trans, start_frame, end_frame)
+        transitions, prev, frame_trans, start, end)
     print("Number of open-to-closed crossings detected: %d" % len(open_closed_entrytime))
     print("Number of closed-to-open crossings detected: %d" % len(closed_open_entrytime))
 
     lingering_entrytime, lingering_exittime, prolonged_open_closed_entrytime, prolonged_open_closed_exittime, prolonged_closed_open_entrytime, prolonged_closed_open_exittime, withdraw_entrytime, withdraw_exittime = get_lingerings(
-        transitions, prev, frame_trans, start_frame, end_frame)
+        transitions, prev, frame_trans, start, end)
     print("Number of lingerings in transition region detected: %d" % len(lingering_entrytime))
     print("Number of prolonged open to closed crossings detected: %d" % len(prolonged_open_closed_entrytime))
     print("Number of prolonged closed to open crossings detected: %d" % len(prolonged_closed_open_entrytime))
     print("Number of withdraws detected: %d" % len(withdraw_entrytime))
 
-    dip_starttime, dip_stoptime = get_nose_dips(dists, start_frame, end_frame)
+    dip_starttime, dip_stoptime = get_nose_dips(dists, start, end)
     print("Number of nosedips detected: %d" % len(dip_starttime))
 
     transitions = {
@@ -998,57 +1008,59 @@ def analyze_trajectory_ezm(loc_df, bd, start_time, duration, fps=50):
     return rois_stats, transitions
 
 
-def behav_process(session, start_time, duration, behav='ezm', bp='shoulder', fps=50):
+def loc_analyzer(session, start_time, duration, task='ezm', bp='shoulder', fps=50):
     fps = fps
     loc, scorer = load_location(session)
-    loc = calib_location(loc, behav, fps, )
+    loc = calib_location(loc, task='ezm', fps=fps)
     loc = get_locomotion(loc, fps)
+    loc_x = loc[scorer, bp, 'x']
+    loc_y = loc[scorer, bp, 'y']
 
     # ROI analysis
     # Given position data for a bodypart and the position of a list of rois, this function calculates which roi is the closest to the bodypart at each frame
     results = {}
-    if behav == 'oft':
-        rois_stats, transitions = find_transition_oft(traj_x, traj_y)
+    if task == 'oft':
+        rois_stats, transitions = find_transition_oft(loc_x, loc_y)
         results.update({
             'rois_stats': rois_stats,
             'transitions': transitions})
 
-    if behav == 'epm':
-        EPM_points = load_rois(session, behav)
-        rois_stats, transitions = analyze_trajectory_epm(traj_x, traj_y, traj_x_head, traj_y_head, EPM_points,
-                                                         start_time, duration, spd)
-        results.update({'rois_stats': rois_stats, 'transitions': transitions})
+    # if behav == 'epm':
+    #     EPM_points = load_rois(session, behav)
+    #     rois_stats, transitions = analyze_trajectory_epm(loc_x, loc_y, loc_x_head, loc_y_head, EPM_points,
+    #                                                      start_time, duration, spd)
+    #     results.update({'rois_stats': rois_stats, 'transitions': transitions})
 
-    if behav == 'ezm':
-        rois_stats, transitions = analyze_trajectory_ezm(traj_x, traj_y, start_time, duration, spd, fps)
+    if task == 'ezm':
+        rois_stats, transitions = ezm_analyzer(loc, 'shoulder',  start_time, duration, fps)
         results.update({'rois_stats': rois_stats, 'transitions': transitions})
 
     return loc, results
 
 
 def get_events(events: object, video_trigger: object, video_duration: object, f_video: object = 50) -> object:
-    crop_from = int(f_video * video_trigger)
-    crop_to = int((video_trigger + video_duration) * f_video)
+    crop_start = int(f_video * video_trigger)
+    crop_end = int((video_trigger + video_duration) * f_video)
 
     open_idx = [i for i, el in enumerate(
-        events['rois_stats']['roi_at_each_frame'][crop_from:crop_to])  ## cropped the frame before trigger
+        events['rois_stats']['roi_at_each_frame'][crop_start:crop_end])  ## crop the frame before trigger
                 if
                 el == 'open']
 
     close_idx = [i for i, el in enumerate(
-        events['rois_stats']['roi_at_each_frame'][crop_from:crop_to])
+        events['rois_stats']['roi_at_each_frame'][crop_start:crop_end])
                  if
                  el == 'closed']
-    OTC_idx = np.array(events['transitions']['open_closed_exittime']) - crop_from  ## crop the frame before trigger
+    OTC_idx = np.array(events['transitions']['open_closed_exittime']) - crop_start  ## crop the frame before trigger
 
-    prOTC_idx = np.array(events['transitions']['prolonged_open_closed_exittime']) - crop_from
-    prCTO_idx = np.array(events['transitions']['prolonged_closed_open_exittime']) - crop_from
-    nosedip_idx = np.array(events['transitions']['nosedip_starttime']) - crop_from
+    prOTC_idx = np.array(events['transitions']['prolonged_open_closed_exittime']) - crop_start
+    prCTO_idx = np.array(events['transitions']['prolonged_closed_open_exittime']) - crop_start
+    nosedip_idx = np.array(events['transitions']['nosedip_starttime']) - crop_start
 
     return open_idx, close_idx, OTC_idx, prOTC_idx, prCTO_idx, nosedip_idx
 
 
-def idx_to_events(idx, event_id):
+def create_mne_events(idx, event_id):
     mne_events = np.zeros((len(idx), 3)).astype(int)
     mne_events[:, 0] = idx
     mne_events[:, 2] = [event_id] * len(idx)
