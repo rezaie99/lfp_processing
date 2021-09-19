@@ -13,15 +13,15 @@ from shapely.geometry import Point, Polygon
 
 
 def load_location(session):
-    file_dir = session + '/ephys_processed/'
-    print(file_dir)
-    fname = glob.glob(file_dir + '*.h5')[0]
+    file_dir = session + '/video_processed/'
+    fname = glob.glob(file_dir + '*filtered.h5')[0]
+    print(fname)
     loc = pd.read_hdf(fname) # read the H5 file from Deeplabcut as a dataframe
     scorer = loc.columns[0][0]  # scorer is the trained network by Deeplabcut for estimate the location of a animal
     return loc, scorer
 
 
-def calib_location(loc_df, task='ezm', fps=50, THRL=0.95, THRD=5):
+def calib_location(loc_df, sdir, task='ezm', THRL=0.95, THRD=5):
     scorer = loc_df.columns[0][0]
     bodyparts = loc_df.columns.levels[1].to_list()
     length = len(loc_df)
@@ -48,11 +48,11 @@ def calib_location(loc_df, task='ezm', fps=50, THRL=0.95, THRD=5):
         # or (C) the point is currently out of frame
         # the video frame is 330 by 330 pixels in size in OFT sessions, but approx. 400 by 400 in EZM sessions
         if task == 'ezm':
-            XYMAX = 400
+            XYMAX = 450
         elif task == 'epm':
             XYMAX = 450
         elif task == 'oft':
-            XYMAX = 330
+            XYMAX = 350
         elif task == 'arena':
             XYMAX = 200
         else:
@@ -86,21 +86,21 @@ def calib_location(loc_df, task='ezm', fps=50, THRL=0.95, THRD=5):
         loc_df[scorer, bd, 'x'] = bd_x_new
         loc_df[scorer, bd, 'y'] = bd_y_new
 
-    plt.figure(figsize=(8, 8))
+    fig, ax = plt.subplots(figsize=(8, 8))
     for bd in bodyparts:
-        plt.xlim(0, XYMAX)
-        plt.ylim(0, XYMAX)
-        plt.plot(loc_df[scorer, bd, 'x'], loc_df[scorer, bd, 'y'],
-                 label=bd, alpha=0.4)
+        ax.plot(loc_df[scorer, bd, 'x'], loc_df[scorer, bd, 'y'],
+                 label=bd, alpha=0.3)
 
-    # plt.gcf().subplots_adjust(bottom=0.15, left=0.18, right=0.3)
+    title = 'Locomotion trajectory'
+    ax.set_title(title)
     plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0., fontsize=12)
+    plt.savefig(sdir + 'locomotion trajectory.png')
     plt.show()
 
     return loc_df
 
 
-def get_locomotion(loc_df, fps=50, move_cutoff=5, avgspd_win=10):
+def get_locomotion(loc_df, fps=50, move_cutoff=5, avgspd_win=9):
     # "win" is the length (in frames) of sliding window within which average speed is calculated
     # "move cutoff" is the threshold (in pixels per second, same as speed) below which a frame is labeled as "not moving"
 
@@ -120,12 +120,12 @@ def get_locomotion(loc_df, fps=50, move_cutoff=5, avgspd_win=10):
 
         speed = step * fps  # unit of speed: pixels per second
         acceleration = speed.diff().fillna(0)
-        avgspd = speed.rolling(window=avgspd_win).mean().fillna(0)  # compute the mean of a rolling window, fill na with 0
-        ismoving = avgspd > move_cutoff
+        spd_filtered = speed.rolling(window=avgspd_win).mean().fillna(0)  # compute the mean of a rolling window, fill na with 0
+        ismoving = spd_filtered > move_cutoff
         # acc unit: pixels per timestep squared
 
         loc_df[scorer, bp, 'speed'] = speed
-        loc_df[scorer, bp, 'avgspd'] = avgspd
+        loc_df[scorer, bp, 'speed_filtered'] = spd_filtered
         loc_df[scorer, bp, 'acceleration'] = acceleration
         loc_df[scorer, bp, 'accumlated_dist'] = accumulated_distance
         loc_df[scorer, bp, 'ismoving'] = ismoving
@@ -914,7 +914,7 @@ def analyze_trajectory_epm(traj_x, traj_y, traj_x_head, traj_y_head, epm_coors, 
     return rois_stats, transitions
 
 
-def ezm_analyzer(loc_df, bd, start_time, duration, fps=50):
+def ezm_analyzer(loc_df, bp, start_time, duration, fps=25):
     ''''
     find the transition event in the elevated zero moze
     loc_df: coordinates of the mouse
@@ -929,8 +929,8 @@ def ezm_analyzer(loc_df, bd, start_time, duration, fps=50):
     end = min(int(start + duration * fps), length)
 
     scorer = loc_df.columns[0][0]
-    loc_x = loc_df[scorer, bd, 'x']
-    loc_y = loc_df[scorer, bd, 'y']
+    loc_x = loc_df[scorer, bp, 'x']
+    loc_y = loc_df[scorer, bp, 'y']
 
     rois, roi_at_each_frame, data_time_inrois, dists = get_rois_dists(loc_x, loc_y, start, end)
 
@@ -948,7 +948,7 @@ def ezm_analyzer(loc_df, bd, start_time, duration, fps=50):
     avg_vel_per_roi = {}
     for name in set(roi_at_each_frame):
         indexes = get_indexes(roi_at_each_frame, name)
-        vels = loc_df[scorer, bd, 'avgspd'][indexes] # if not working , use .loc
+        vels = loc_df[scorer, bp, 'avgspd'][indexes] # if not working , use .loc
         avg_vel_per_roi[name] = np.average(np.asarray(vels))
 
     # Save summary
@@ -1008,7 +1008,7 @@ def ezm_analyzer(loc_df, bd, start_time, duration, fps=50):
     return rois_stats, transitions
 
 
-def loc_analyzer(session, start_time, duration, task='ezm', bp='shoulder', fps=50):
+def loc_analyzer(session, start_time, duration, task='ezm', bp='head', fps=25):
     fps = fps
     loc, scorer = load_location(session)
     loc = calib_location(loc, task='ezm', fps=fps)
@@ -1032,7 +1032,7 @@ def loc_analyzer(session, start_time, duration, task='ezm', bp='shoulder', fps=5
     #     results.update({'rois_stats': rois_stats, 'transitions': transitions})
 
     if task == 'ezm':
-        rois_stats, transitions = ezm_analyzer(loc, 'shoulder',  start_time, duration, fps)
+        rois_stats, transitions = ezm_analyzer(loc, bp,  start_time, duration, fps)
         results.update({'rois_stats': rois_stats, 'transitions': transitions})
 
     return loc, results

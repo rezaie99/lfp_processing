@@ -1,5 +1,7 @@
 #%%
 import sys
+
+import scipy.signal
 import scipy.stats as stats
 from scipy.signal import coherence
 from scipy.cluster.hierarchy import fcluster
@@ -39,7 +41,8 @@ plt.rcParams["xtick.labelsize"] = 14
 plt.rcParams["ytick.labelsize"] = 14
 plt.rcParams["font.size"] = 7
 plt.rcParams["font.family"] = "Arial"
-plt.rcParams["lines.linewidth"] = 2
+plt.rcParams["lines.linewidth"] = 1.8
+
 
 # sys.path.append('D:\ephys')
 
@@ -60,6 +63,22 @@ except PermissionError:
 
 #%%
 
+mBWfus008 = {
+    'arena_0219': '2021-02-19_mBWfus008_arena_ephys',
+    'ezm_0219': '2021-02-19_mBWfus008_EZM_ephys',
+    'oft_0219': '2021-02-19_mBWfus008_OF_ephys',
+
+    'arena_0226': '2021-02-26_mBWfus008_arena_ephys',
+    'ezm_0226': '2021-02-26_mBWfus008_EZM_ephys',
+    'oft_0226': '2021-02-26_mBWfus008_OF_ephys',
+
+    'arena_0305_bef': '2021-03-05_mBWfus008_before_arena_ephys',
+    'cage_0305': '2021-03-05_mBWfus008_cage_arena_ephys',
+    'arena_0305_aft': '2021-03-05_mBWfus008_after_arena_ephys',
+    'ezm_0305': '2021-03-05_mBWfus008_EZM_ephys',
+    'oft_0305': '2021-03-05_mBWfus008_OF_ephys',
+}
+
 mBWfus009 = {
     'arena_0219': '2021-02-19_mBWfus009_arena_ephys',
     'ezm_0219': '2021-02-19_mBWfus009_EZM_ephys',
@@ -77,22 +96,6 @@ mBWfus009 = {
 
     'arena_0325': '2021-03-25_mBWfus009_arena_ephys',
     'epm_0325': '2021-03-25_mBWfus009_EPM_ephys'
-}
-
-mBWfus008 = {
-    'arena_0219': '2021-02-19_mBWfus008_arena_ephys',
-    'ezm_0219': '2021-02-19_mBWfus008_EZM_ephys',
-    'oft_0219': '2021-02-19_mBWfus008_OF_ephys',
-
-    'arena_0226': '2021-02-26_mBWfus008_arena_ephys',
-    'ezm_0226': '2021-02-26_mBWfus008_EZM_ephys',
-    'oft_0226': '2021-02-26_mBWfus008_OF_ephys',
-
-    'arena_0305_bef': '2021-03-05_mBWfus008_before_arena_ephys',
-    'cage_0305': '2021-03-05_mBWfus008_cage_arena_ephys',
-    'arena_0305_aft': '2021-03-05_mBWfus008_after_arena_ephys',
-    'ezm_0305': '2021-03-05_mBWfus008_EZM_ephys',
-    'oft_0305': '2021-03-05_mBWfus008_OF_ephys',
 }
 
 mBWfus010 = {
@@ -244,115 +247,22 @@ mBWfus032  ={
     'oft_0809': '2021-08-09_mBWfus032_OFT_ephys',}
 
 
-
-
-
-### Behavioral related processing
 #%%
-animal = mBWfus009
-session = 'ezm_0219'
-start = 0
-duration = 900
+### for updating infomation
+# animal = mBWfus032
+#
+# for key in animal:
+#     session = animal[key]
+#     dir_save = session + '/ephys_processed/'
+#     data = ephys.load_data(session)
+#     wanted_ch= [ 1,  2,  4,  5,  8,  9, 10, 11, 12, 13, 14, 15, 17, 18, 20, 21,
+#                 22, 23, 24, 25, 26, 28, 37, 38, 41, 42, 43, 44, 45, 46, 47, 48, 49,
+#                 50] ## mBWfus032
+#     data['info']['wanted_channel'] = wanted_ch
+#     with open(dir_save + session + '_dataset.pkl', 'wb') as f:
+#         pickle.dump(data, f)
+#         f.close()
 
-# loc, scorer = behav.load_location(animal[session])
-# loc = behav.calib_location(loc)
-# loc = behav.get_locomotion(loc)
-
-loc, events = behav.loc_analyzer(animal[session], start, duration, task='ezm', bp='shoulder', fps=50) ## (rois_stats, transitions)
-
-#%%
-## plot speed of different body parts [head, shoulder, tail]
-fps_v = 50
-pixel2cm = 0.16 ## 400 pixels = 65 cm
-t = np.arange(0, len(loc), 1/fps_v)
-start = 60*fps_v
-win = 60
-end = start + win*fps_v
-bps = loc.columns.levels[1].to_list()
-scorer = loc.columns[0][0]
-
-for bp in bps:
-    plt.plot(t[start:end], loc[scorer, bp, 'avgspd'][start:end]*pixel2cm, label=bp)
-
-plt.legend(loc='upper right')
-plt.xlabel('Time sec')
-plt.ylabel('Speed cm/s')
-plt.show()
-
-
-#%%
-## use the mean speed of three body parts and generate a plot
-avgspd = []
-
-for bp in bps:
-    avgspd.append(loc[scorer, bp, 'avgspd'])
-
-avgspd = np.array(avgspd)
-avgspd = np.mean(avgspd, axis=0)
-
-## plot the mean speed of three body parts: head, shoulder, tails
-pixel2cm = 0.16 ## 400 pixels = 65 cm
-fps_v = 50
-start = 40*fps_v
-win = 100
-end = start + win*fps_v
-d = avgspd[start:end]*pixel2cm
-t = np.arange(0, len(loc), 1/fps_v)[start:end]
-
-
-plt.plot(t, d)
-plt.xlabel('Time sec')
-plt.ylabel('Speed cm/s')
-plt.show()
-
-#%%
-## plot the distribution of the locomotion speed
-pixel2cm = 0.16 ## 400 pixels = 65 cm
-start = 40*fps_v
-win = 600
-end = start + win*fps_v
-d = avgspd[start:end]*pixel2cm
-
-plt.figure(figsize=(8, 6))
-n, x, _ = plt.hist(d, bins =100,
-                   histtype=u'step')
-
-plt.xlabel('Speed cm/s')
-plt.ylabel('Counts')
-plt.xlim(-5, 40)
-plt.show()
-
-#%%
-## check the statits of EZM-related events
-wanted = ['ROI_name', 'cumulative_time_in_roi_sec', 'avg_time_in_roi_sec', 'avg_vel_in_roi']
-ezm_stats = {key: events['rois_stats'][key] for key in wanted}
-ezm_stats = pd.DataFrame.from_dict(ezm_stats)
-# ezm_stats = ezm_stats.drop([1,3])
-ezm_stats
-
-#%%
-animal = mBWfus009
-
-
-# arena0218_trigger = 2.5 # LED off, use this for synchronizing video and ephys recording. TTL trigger in the ephys data can be extracted by get_trigger()
-# arena0219_trigger = 6.44
-# ezm0219_trigger = 14.24
-
-#%%
-LED_off = 14.24
-open_idx, close_idx, OTC_idx, prOTC_idx, prCTO_idx, nosedip_idx = behav.get_events(events, LED_off, 900)
-
-event_dict = dict(OTC = 1, prOTC= 2, prCTO = 3, nosedip = 4)
-
-OTC = behav.create_mne_events(OTC_idx, 1)
-prOTC = behav.create_mne_events(prOTC_idx, 2)
-prCTO = behav.create_mne_events(prCTO_idx, 3)
-nosedip = behav.create_mne_events(nosedip_idx, 4)
-
-mne_events = behav.merge_events(OTC, prOTC, prCTO, nosedip)
-
-plt.plot(mne_events[:, 0])
-plt.show()
 
 ##### Ephys analysis
 
@@ -360,18 +270,31 @@ plt.show()
 animal = mBWfus025
 date = '0802'
 
+
+data_cage = ephys.load_data(animal['cage_' + date])
+sdir_cage = animal['cage_' + date] + '/results/'
+if not os.path.exists(sdir_cage):
+    os.makedirs(sdir_cage)
+print(sdir_cage)
+
 # # # #
-# data_arena_bef = ephys.load_data(animal['arena_' + date + '_bef'])
-# sdir_arena_bef = animal['arena_' + date + '_bef'] + '/figures/'
-# if not os.path.exists(sdir_arena_bef):
-#     os.makedirs(sdir_arena_bef)
-# print(sdir_arena_bef)
+data_arena_bef = ephys.load_data(animal['arena_' + date + '_bef'])
+sdir_arena_bef = animal['arena_' + date + '_bef'] + '/results/'
+if not os.path.exists(sdir_arena_bef):
+    os.makedirs(sdir_arena_bef)
+print(sdir_arena_bef)
+
+data_recover = ephys.load_data(animal['recover_' + date])
+sdir_recover = animal['recover_' + date] + '/results/'
+if not os.path.exists(sdir_recover):
+    os.makedirs(sdir_recover)
+print(sdir_recover)
 # # # #
-# data_arena = ephys.load_data(animal['arena_' + date + '_aft'])
-# sdir_arena = animal['arena_' + date + '_aft'] + '/figures/'
-# if not os.path.exists(sdir_arena):
-#     os.makedirs(sdir_arena)
-# print(sdir_arena)
+data_arena = ephys.load_data(animal['arena_' + date + '_aft'])
+sdir_arena = animal['arena_' + date + '_aft'] + '/results/'
+if not os.path.exists(sdir_arena):
+    os.makedirs(sdir_arena)
+print(sdir_arena)
 
 # data_arena = ephys.load_data(animal['arena_' + date])
 # sdir_arena = animal['arena_' + date] + '/figures/'
@@ -380,28 +303,25 @@ date = '0802'
 # print(sdir_arena)
 
 data_ezm = ephys.load_data(animal['ezm_' + date])
-sdir_ezm = animal['ezm_' + date] + '/figures/'
+sdir_ezm = animal['ezm_' + date] + '/results/'
 if not os.path.exists(sdir_ezm):
     os.makedirs(sdir_ezm)
 print(sdir_ezm)
 #
-# data_oft = ephys.load_data(animal['oft_' + date])
-# sdir_oft = animal['oft_' + date] + '/figures/'
-# if not os.path.exists(sdir_oft):
-#     os.makedirs(sdir_oft)
-# print(sdir_oft)
-#%%
-### get_lfp is cropped from the trigger
-# lfp = ephys.column_by_pad(ephys.get_lfp(data_arena))
-# print(lfp.columns)
-#
-# lfp = ephys.column_by_pad(ephys.get_lfp(data_ezm, 'all'))
-# print(lfp.columns)
-#
-lfp = ephys.column_by_pad(ephys.get_lfp(data_oft))
-print(lfp.columns)
+data_oft = ephys.load_data(animal['oft_' + date])
+sdir_oft = animal['oft_' + date] + '/results/'
+if not os.path.exists(sdir_oft):
+    os.makedirs(sdir_oft)
+print(sdir_oft)
+
+wanted_ch = data_cage['info']['wanted_channel'] ## the wanted_ch are the pads ordered by the depth
+mpfc_ch = [str(el) for el in wanted_ch if el < 32]
+vhipp_ch = [str(el) for el in wanted_ch if el >= 32]
 
 #%%
+
+lfp = ephys.column_by_pad(ephys.get_lfp(data_oft))
+print(lfp.columns)
 
 corr_matrix = lfp.iloc[10000:200000].corr() # 10 second
 
@@ -441,30 +361,52 @@ plt.show()
 # wanted_ch= [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 14, 15, 16,
 #            35, 36, 38, 48 ,49, 50, 51, 53,54] # mBWfus012
 
-wanted_ch = [ 0,  1,  2, 5,  7,  8, 10, 11, 12, 14, 16, 17, 18, 19, 20, 21,
-            22, 24, 25, 26, 27, 28, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44,
-            45, 46, 47, 48, 50, 54, 55, 58, 60, 61, 62] ## mBWfus025
+# wanted_ch = [ 0,  1,  2, 5,  7,  8, 10, 11, 12, 14, 16, 17, 18, 19, 20, 21,
+#             22, 24, 25, 26, 27, 28, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44,
+#             45, 46, 47, 48, 50, 54, 55, 58, 60, 61, 62] ## mBWfus025
 
-# wanted_ch = [ 1, 5,  9, 53, 55, 56, 57] ## mBWfus026
+# wanted_ch = [ 1, 5, 9, 53, 55, 56, 57] ## mBWfus026
 
 # wanted_ch = [ 1,  2,  4,  5,  8,  9, 10, 11, 12, 13, 14, 15, 16, 17, 19, 20, 21,
 #             24, 25, 26, 27, 28, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 45, 46,
-#             48, 49, 50, 54, 55, 57, 58] ## mBWfus027
+#             48, 49, 50, 54, 55, 57] ## mBWfus027
 
-# wanted_ch = [ 0,  1,  4,  5,  8,  9, 10, 11, 12, 13, 14, 15, 16, 18, 19, 20, 21,
-#             22, 24, 28, 34, 35, 36, 37, 38, 39, 40, 41, 43, 44, 45, 46, 47, 48,
+# wanted_ch = [ 0,  1,  4,  5,  8,  9, 10, 11, 13, 14, 15, 16, 18, 19, 20, 21,
+#             22, 24, 28, 34, 35, 36, 37, 38, 39, 40, 41, 44, 45, 46, 47, 48,
 #             49, 50, 51, 55, 57, 58] ## mBWfus028
 
+# wanted_ch = [2, 3, 4, 5, 9, 10, 11, 12, 13, 14, 15, 17, 19, 24, 26] ## mBWfus029
+#
 # wanted_ch= [ 0,  1,  2,  4,  5,  7,  8,  9, 10, 11, 12, 14, 15, 16, 17, 18, 19,
 #             22, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46,
-#             47, 48, 49, 50, 51, 53, 54, 55, 57, 58, 60, 61, 62, 63] ## mBWfus031
-
+#             47, 48, 49, 50, 51, 53, 54, 57, 58, 60, 61, 62, 63] ## mBWfus031
+# #
 # wanted_ch= [ 1,  2,  4,  5,  8,  9, 10, 11, 12, 13, 14, 15, 17, 18, 20, 21,
 #             22, 23, 24, 25, 26, 28, 37, 38, 41, 42, 43, 44, 45, 46, 47, 48, 49,
 #             50] ## mBWfus032
 
-mpfc_ch = [el for el in wanted_ch if el < 32]
-vhipp_ch = [el for el in wanted_ch if el >= 32]
+
+
+#%%
+lfp = ephys.column_by_pad(ephys.get_lfp(data_cage))
+lfp = lfp[wanted_ch]
+print(lfp.shape)
+
+ch_list= [str(el) for el in lfp.columns.tolist()]
+print(len(ch_list), ch_list)
+n_channels = len(ch_list)
+sampling_freq = 500  # in Hertz
+info = mne.create_info(n_channels, sfreq=sampling_freq)
+
+ch_types = ['ecog'] * n_channels
+info = mne.create_info(ch_list, ch_types=ch_types, sfreq=sampling_freq)
+info['bads'] = []  # Names of bad channels
+print(info)
+
+lfp_filted = mne.filter.filter_data(data=lfp.T, sfreq=500, l_freq=0.5, h_freq=None) ## high-pass filter at 0.5Hz
+raw_cage = mne.io.RawArray(lfp_filted, info) ### mne data format (n-channels, n-samples), unit = V
+
+print('Mission Completed')
 
 
 #%%
@@ -484,11 +426,32 @@ info['bads'] = []  # Names of bad channels
 print(info)
 
 lfp_filted = mne.filter.filter_data(data=lfp.T, sfreq=500, l_freq=0.5, h_freq=None) ## high-pass filter at 0.5Hz
-raw_arena_bef = mne.io.RawArray(lfp_filted*1e-6, info) ### mne data format (n-channels, n-samples), unit = V
+raw_arena_bef = mne.io.RawArray(lfp_filted, info) ### mne data format (n-channels, n-samples), unit = V
 
 print('Mission Completed')
 
+#%%
+lfp = ephys.column_by_pad(ephys.get_lfp(data_recover))
+lfp = lfp[wanted_ch]
+print(lfp.shape)
 
+ch_list= [str(el) for el in lfp.columns.tolist()]
+print(len(ch_list), ch_list)
+n_channels = len(ch_list)
+sampling_freq = 500  # in Hertz
+info = mne.create_info(n_channels, sfreq=sampling_freq)
+
+ch_types = ['ecog'] * n_channels
+info = mne.create_info(ch_list, ch_types=ch_types, sfreq=sampling_freq)
+info['bads'] = []  # Names of bad channels
+print(info)
+
+lfp_filted = mne.filter.filter_data(data=lfp.T, sfreq=500, l_freq=0.5, h_freq=None) ## high-pass filter at 0.5Hz
+raw_recover = mne.io.RawArray(lfp_filted, info) ### mne data format (n-channels, n-samples), unit = V
+
+print('Mission Completed')
+
+#%%
 lfp = ephys.column_by_pad(ephys.get_lfp(data_arena))
 lfp = lfp[wanted_ch]
 print(lfp.shape)
@@ -506,7 +469,7 @@ print(info)
 
 lfp_filted = mne.filter.filter_data(data=lfp.T, sfreq=500, l_freq=0.5, h_freq=None)
 
-raw_arena = mne.io.RawArray(lfp_filted*1e-6, info) ### mne data format (n-channels, n-samples), unit = mV
+raw_arena = mne.io.RawArray(lfp_filted, info) ### mne data format (n-channels, n-samples), unit = mV
 
 print('Mission Completed')
 
@@ -528,7 +491,7 @@ print(info)
 
 lfp_filted = mne.filter.filter_data(data=lfp.T, sfreq=500, l_freq=0.5, h_freq=None)
 
-raw_ezm = mne.io.RawArray(lfp_filted*1e-6, info) ### mne data format (n-channels, n-samples) V
+raw_ezm = mne.io.RawArray(lfp_filted, info) ### mne data format (n-channels, n-samples) V
 print('Mission Completed')
 #%%
 lfp = ephys.column_by_pad(ephys.get_lfp(data_oft))
@@ -548,30 +511,148 @@ print(info)
 
 lfp_filted = mne.filter.filter_data(data=lfp.T, sfreq=500, l_freq=0.5, h_freq=None)
 
-raw_oft = mne.io.RawArray(lfp_filted*1e-6, info) ### mne data format (n-channels, n-samples) mV
+raw_oft = mne.io.RawArray(lfp_filted, info) ### mne data format (n-channels, n-samples) mV
 print('Mission Completed')
 
 #%%
 
-raw_ezm.plot(n_channels = 46, duration=2, scalings='auto')
+raw_cage.plot(n_channels = 46, duration=2, scalings='auto')
 
 #%%
-raw_arena.plot_psd(fmin=1, fmax=40, tmin=None, tmax=None, proj=False, n_fft=1024,
-                   n_overlap=512, reject_by_annotation=True, picks=None, ax=None, color='black',
-                   xscale='linear', area_mode='std', area_alpha=0.33, dB=True,
+raw_cage.plot_psd(fmin=1, fmax=100, tmin=0, tmax=300, proj=False, n_fft=2048,
+                   n_overlap=256, reject_by_annotation=True, picks=None, ax=None, color='black',
+                   xscale='linear', area_mode='std', area_alpha=0.15, dB=False,
                    estimate='power', show=True, n_jobs=20, average=False, line_alpha=None, spatial_colors=True,
                    sphere=None, window='hamming', verbose=None)
 
 #%%
-title = 'Power Spectra Welch'
-xlabel = 'Frequency'
-ylabel = 'Power'
+title = 'Power Spectrum'
+xlabel = 'Frequency (Hz)'
+ylabel = 'Power (uV**2/Hz)'
+power_spectrum = {}
+workers=20
+
+#%%
+pad_name = [str(el) for el in np.arange(0, 64)]
+depth = np.arange(2170, -1, -70)
+depth_list = np.concatenate([depth, depth])
+pad_depth =dict(zip(pad_name, depth_list))
+#%%
+ch_depth = {}
+#%%
+data = raw_cage.copy()
+psds_cage, freqs = mne.time_frequency.psd_welch(data, fmin=0, fmax=100, tmin=0, tmax=600, n_fft=1024, n_overlap=128,
+                                  n_per_seg=256, picks=None, proj=False, n_jobs=workers, reject_by_annotation=True,
+                                  average='mean', window='hamming', verbose=None)
+# # Convert power to dB scale.
+# psds_cage = 10 * np.log10(psds_cage)
+#%%
+import seaborn as sns
+
+psds_cage_df = pd.DataFrame(psds_cage.T, columns=ch_list)
+psds_cage_mpfc = psds_cage_df[mpfc_ch]
+psds_cage_vhpc = psds_cage_df[vhipp_ch]
+depth = [pad_depth[key] for key in mpfc_ch]
+psds_cage_mpfc.loc['pad_depth']= depth
+psds_cage_mpfc['freqs'] = freqs
+psds_cage_vhpc['freqs'] = freqs
+
+psds_cage_mpfc.to_csv(sdir_cage + 'mPFC_spectrum.csv')
+psds_cage_vhpc.to_csv(sdir_cage + 'vHPC_spectrum.csv')
+
+
+palette = sns.color_palette("rocket_r")
+#%%
+sns.histplot(psds_cage_vhpc.iloc[:-1])
+plt.xlim(-20, 500)
+plt.show()
+
+#%%
+sns.set_theme(style="ticks")
+dots = sns.load_dataset("dots")
+
+# Define the palette as a list to specify exact values
+palette = sns.color_palette("rocket_r")
+
+# Plot the lines on two facets
+sns.relplot(
+    data=psds_cage_mpfc,
+    x="freqs", y="1",
+    hue="coherence", size="choice", col="align",
+    kind="line", size_order=["T1", "T2"], palette=palette,
+    height=5, aspect=.75, facet_kws=dict(sharex=False),
+)
+
+plt.show()
+
+
+#%%
+
+
+#%%
+for _ in range(psds_cage.shape[0]):
+    depth = pad_depth[str(_)]
+    print(depth)
+
+    #%%
+    plt.plot(freqs, psds_cage[_, :])
+
+plt.xlabel(xlabel)
+plt.ylabel(ylabel)
+plt.title(title + '_cage')
+plt.gcf().subplots_adjust(bottom=0.15, left=0.18)
+plt.ticklabel_format(axis='both', style="sci", scilimits=(0,3))
+plt.savefig(sdir_cage + title + '.png', transparent=True)
+plt.show()
+
+#%%
+
+for _ in range(psds_cage.shape[0]):
+    plt.plot(freqs, psds_cage[_, :])
+
+plt.xlabel(xlabel)
+plt.ylabel(ylabel)
+plt.title(title + '_cage')
+plt.gcf().subplots_adjust(bottom=0.15, left=0.18)
+plt.ticklabel_format(axis='both', style="sci", scilimits=(0, 3))
+plt.savefig(sdir_cage + title + '.png', transparent=True)
+plt.show()
+
+mean_power_mPFC = psds_cage[:len(mpfc_ch), :].mean(axis=0)
+power_spectrum['frequencies'] = freqs
+power_spectrum['mean_power_mPFC_cage'] = mean_power_mPFC
+sd_power_mPFC = psds_cage[:len(mpfc_ch), :].std(axis=0)
+sd_power_mPFC_cage = sd_power_mPFC
+plt.plot(freqs, mean_power_mPFC, label='mPFC')
+plt.fill_between(freqs, mean_power_mPFC - sd_power_mPFC, mean_power_mPFC + sd_power_mPFC, alpha=0.15)
+
+mean_power_vHPC = psds_cage[len(mpfc_ch):, :].mean(axis=0)
+power_spectrum['mean_power_vHPC_cage'] = mean_power_vHPC
+sd_power_vHPC = psds_cage[len(mpfc_ch):, :].std(axis=0)
+sd_power_vHPC_cage = sd_power_vHPC
+plt.plot(freqs, mean_power_vHPC, label='vHPC')
+plt.fill_between(freqs, mean_power_vHPC - sd_power_vHPC, mean_power_vHPC + sd_power_vHPC,  alpha=0.15)
+
+plt.xlabel(xlabel)
+plt.ylabel(ylabel)
+plt.title(title + '_cage')
+plt.gcf().subplots_adjust(bottom=0.15, left=0.18)
+plt.ticklabel_format(axis='both', style="sci", scilimits=(0,3))
+plt.legend()
+plt.savefig(sdir_cage + title + '_mean.png')
+plt.show()
+
+print('Mission Completed')
+
+#%%
 
 ### compute power spectra using the Welch method
 data = raw_arena_bef.copy()
-psds_arena_bef, freqs = mne.time_frequency.psd_welch(data, fmin=0, fmax=40, tmin=20, tmax=620, n_fft=1024, n_overlap=180,
-                                  n_per_seg=200, picks=None, proj=False, n_jobs=20, reject_by_annotation=True,
+psds_arena_bef, freqs = mne.time_frequency.psd_welch(data, fmin=0, fmax=100, tmin=00, tmax=600, n_fft=1024, n_overlap=128,
+                                  n_per_seg=256, picks=None, proj=False, n_jobs=workers, reject_by_annotation=True,
                                   average='mean', window='hamming', verbose=None)
+# # Convert power to dB scale.
+# psds_arena_bef = 10 * np.log10(psds_arena_bef)
 
 for _ in range(psds_arena_bef.shape[0]):
     plt.plot(freqs, psds_arena_bef[_, :])
@@ -579,34 +660,80 @@ plt.xlabel(xlabel)
 plt.ylabel(ylabel)
 plt.title(title + '_Arena_bef')
 plt.gcf().subplots_adjust(bottom=0.15, left=0.18)
+plt.ticklabel_format(axis='both', style="sci", scilimits=(0,3))
 plt.savefig(sdir_arena_bef + title + '.png')
 plt.show()
 
 mean_power_mPFC = psds_arena_bef[:len(mpfc_ch), :].mean(axis=0)
+power_spectrum['mean_power_mPFC_arena1'] = mean_power_mPFC
 sd_power_mPFC = psds_arena_bef[:len(mpfc_ch), :].std(axis=0)
 plt.plot(freqs, mean_power_mPFC, label='mPFC')
-plt.fill_between(freqs, mean_power_mPFC - sd_power_mPFC, mean_power_mPFC + sd_power_mPFC, alpha=0.3)
+plt.fill_between(freqs, mean_power_mPFC - sd_power_mPFC, mean_power_mPFC + sd_power_mPFC, alpha=0.15)
 
 mean_power_vHPC = psds_arena_bef[len(mpfc_ch):, :].mean(axis=0)
+power_spectrum['mean_power_vHPC_arena1'] = mean_power_vHPC
 sd_power_vHPC = psds_arena_bef[len(mpfc_ch):, :].std(axis=0)
 plt.plot(freqs, mean_power_vHPC, label='vHPC')
-plt.fill_between(freqs, mean_power_vHPC - sd_power_vHPC, mean_power_vHPC + sd_power_vHPC,  alpha=0.3)
+plt.fill_between(freqs, mean_power_vHPC - sd_power_vHPC, mean_power_vHPC + sd_power_vHPC,  alpha=0.15)
 
 plt.xlabel(xlabel)
 plt.ylabel(ylabel)
 plt.title(title + '_Arena_bef')
 plt.gcf().subplots_adjust(bottom=0.15, left=0.18)
+plt.ticklabel_format(axis='both', style="sci", scilimits=(0,3))
 plt.legend()
 plt.savefig(sdir_arena_bef + title + '_mean.png')
 plt.show()
 
 print('Mission Completed')
 
+
+#%%
+
+### compute power spectra using the Welch method
+data = raw_recover.copy()
+psds_recover_10, freqs = mne.time_frequency.psd_welch(data, fmin=0, fmax=100, tmin=00, tmax=600, n_fft=1024, n_overlap=128,
+                                  n_per_seg=256, picks=None, proj=False, n_jobs=workers, reject_by_annotation=True,
+                                  average='mean', window='hamming', verbose=None)
+# psds_recover_10 = 10 * np.log10(psds_recover_10)
+
+psds_recover_20, freqs = mne.time_frequency.psd_welch(data, fmin=0, fmax=100, tmin=600, tmax=1200, n_fft=1024, n_overlap=128,
+                                  n_per_seg=256, picks=None, proj=False, n_jobs=workers, reject_by_annotation=True,
+                                  average='mean', window='hamming', verbose=None)
+# psds_recover_20 = 10 * np.log10(psds_recover_20)
+
+psds_recover_30, freqs = mne.time_frequency.psd_welch(data, fmin=0, fmax=100, tmin=1200, tmax=1800, n_fft=1024, n_overlap=128,
+                                  n_per_seg=256, picks=None, proj=False, n_jobs=workers, reject_by_annotation=True,
+                                  average='mean', window='hamming', verbose=None)
+# psds_recover_30 = 10 * np.log10(psds_recover_30)
+
+psds_recover_40, freqs = mne.time_frequency.psd_welch(data, fmin=0, fmax=100, tmin=1800, tmax=2400, n_fft=1024, n_overlap=128,
+                                  n_per_seg=256, picks=None, proj=False, n_jobs=workers, reject_by_annotation=True,
+                                  average='mean', window='hamming', verbose=None)
+
+power_spectrum['mean_power_mPFC_recover_10min'] = psds_recover_10[:len(mpfc_ch), :].mean(axis=0)
+power_spectrum['mean_power_vHPC_recover_10min'] = psds_recover_10[len(mpfc_ch):, :].mean(axis=0)
+
+power_spectrum['mean_power_mPFC_recover_20min'] = psds_recover_20[:len(mpfc_ch), :].mean(axis=0)
+power_spectrum['mean_power_vHPC_recover_20min'] = psds_recover_20[len(mpfc_ch):, :].mean(axis=0)
+
+power_spectrum['mean_power_mPFC_recover_30min'] = psds_recover_30[:len(mpfc_ch), :].mean(axis=0)
+power_spectrum['mean_power_vHPC_recover_30min'] = psds_recover_30[len(mpfc_ch):, :].mean(axis=0)
+
+power_spectrum['mean_power_mPFC_recover_40min'] = psds_recover_40[:len(mpfc_ch), :].mean(axis=0)
+power_spectrum['mean_power_vHPC_recover_40min'] = psds_recover_40[len(mpfc_ch):, :].mean(axis=0)
+
+
+print('Mission Completed')
+
 #%%
 data = raw_arena.copy()
-psds_arena, freqs = mne.time_frequency.psd_welch(data, fmin=0, fmax=40, tmin=20, tmax=620, n_fft=1024, n_overlap=180,
-                                  n_per_seg=200, picks=None, proj=False, n_jobs=20, reject_by_annotation=True,
+psds_arena, freqs = mne.time_frequency.psd_welch(data, fmin=0, fmax=100, tmin=0, tmax=600, n_fft=1024, n_overlap=128,
+                                  n_per_seg=256, picks=None, proj=False, n_jobs=workers, reject_by_annotation=True,
                                   average='mean', window='hamming', verbose=None)
+
+# # Convert power to dB scale.
+# psds_arena = 10 * np.log10(psds_arena)
 
 for _ in range(psds_arena.shape[0]):
     plt.plot(freqs, psds_arena[_, :])
@@ -614,23 +741,27 @@ plt.xlabel(xlabel)
 plt.ylabel(ylabel)
 plt.title(title + '_Arena')
 plt.gcf().subplots_adjust(bottom=0.15, left=0.18)
+plt.ticklabel_format(axis='both', style="sci", scilimits=(0,3))
 plt.savefig(sdir_arena + title + '.png')
 plt.show()
 
 mean_power_mPFC = psds_arena[:len(mpfc_ch), :].mean(axis=0)
+power_spectrum['mean_power_mPFC_arena2']= mean_power_mPFC
 sd_power_mPFC = psds_arena[:len(mpfc_ch), :].std(axis=0)
 plt.plot(freqs, mean_power_mPFC, label='mPFC')
-plt.fill_between(freqs, mean_power_mPFC - sd_power_mPFC, mean_power_mPFC + sd_power_mPFC, alpha=0.3)
+plt.fill_between(freqs, mean_power_mPFC - sd_power_mPFC, mean_power_mPFC + sd_power_mPFC, alpha=0.15)
 
 mean_power_vHPC = psds_arena[len(mpfc_ch):, :].mean(axis=0)
+power_spectrum['mean_power_vHPC_arena2'] = mean_power_vHPC
 sd_power_vHPC = psds_arena[len(mpfc_ch):, :].std(axis=0)
 plt.plot(freqs, mean_power_vHPC, label='vHPC')
-plt.fill_between(freqs, mean_power_vHPC - sd_power_vHPC, mean_power_vHPC + sd_power_vHPC,  alpha=0.3)
+plt.fill_between(freqs, mean_power_vHPC - sd_power_vHPC, mean_power_vHPC + sd_power_vHPC,  alpha=0.15)
 
 plt.xlabel(xlabel)
 plt.ylabel(ylabel)
 plt.title(title + '_Arena')
 plt.gcf().subplots_adjust(bottom=0.15, left=0.18)
+plt.ticklabel_format(axis='both', style="sci", scilimits=(0,3))
 plt.legend()
 plt.savefig(sdir_arena + title + '_mean.png')
 plt.show()
@@ -639,9 +770,12 @@ print('Mission Completed')
 
 #%%
 data = raw_ezm.copy()
-psds_ezm, freqs = mne.time_frequency.psd_welch(data, fmin=0, fmax=40, tmin=20, tmax=620, n_fft=1024, n_overlap=180,
-                                  n_per_seg=200, picks=None, proj=False, n_jobs=20, reject_by_annotation=True,
+psds_ezm, freqs = mne.time_frequency.psd_welch(data, fmin=0, fmax=100, tmin=0, tmax=600, n_fft=1024, n_overlap=128,
+                                  n_per_seg=256, picks=None, proj=False, n_jobs=workers, reject_by_annotation=True,
                                   average='mean', window='hamming', verbose=None)
+
+# # Convert power to dB scale.
+# psds_ezm = 10 * np.log10(psds_ezm)
 
 for _ in range(psds_ezm.shape[0]):
     plt.plot(freqs, psds_ezm[_, :])
@@ -649,23 +783,27 @@ plt.xlabel(xlabel)
 plt.ylabel(ylabel)
 plt.title(title + '_EZM')
 plt.gcf().subplots_adjust(bottom=0.15, left=0.18)
+plt.ticklabel_format(axis='both', style="sci", scilimits=(0,3))
 plt.savefig(sdir_ezm + title + '.png')
 plt.show()
 
 mean_power_mPFC = psds_ezm[:len(mpfc_ch), :].mean(axis=0)
+power_spectrum['mean_power_mPFC_ezm'] = mean_power_mPFC
 sd_power_mPFC = psds_ezm[:len(mpfc_ch), :].std(axis=0)
 plt.plot(freqs, mean_power_mPFC, label='mPFC')
-plt.fill_between(freqs, mean_power_mPFC - sd_power_mPFC, mean_power_mPFC + sd_power_mPFC, alpha=0.3)
+plt.fill_between(freqs, mean_power_mPFC - sd_power_mPFC, mean_power_mPFC + sd_power_mPFC, alpha=0.15)
 
 mean_power_vHPC = psds_ezm[len(mpfc_ch):, :].mean(axis=0)
+power_spectrum['mean_power_vHPC_ezm'] = mean_power_vHPC
 sd_power_vHPC = psds_ezm[len(mpfc_ch):, :].std(axis=0)
 plt.plot(freqs, mean_power_vHPC, label='vHPC')
-plt.fill_between(freqs, mean_power_vHPC - sd_power_vHPC, mean_power_vHPC + sd_power_vHPC,  alpha=0.3)
+plt.fill_between(freqs, mean_power_vHPC - sd_power_vHPC, mean_power_vHPC + sd_power_vHPC,  alpha=0.15)
 
 plt.xlabel(xlabel)
 plt.ylabel(ylabel)
 plt.title(title + '_EZM')
 plt.gcf().subplots_adjust(bottom=0.15, left=0.18)
+plt.ticklabel_format(axis='both', style="sci", scilimits=(0,3))
 plt.legend()
 plt.savefig(sdir_ezm + title + '_mean.png')
 plt.show()
@@ -674,9 +812,12 @@ print('Mission Completed')
 
 #%%
 data = raw_oft.copy()
-psds_oft, freqs = mne.time_frequency.psd_welch(data, fmin=0, fmax=40, tmin=20, tmax=620, n_fft=1024, n_overlap=180,
-                                  n_per_seg=200, picks=None, proj=False, n_jobs=20, reject_by_annotation=True,
+psds_oft, freqs = mne.time_frequency.psd_welch(data, fmin=0, fmax=100, tmin=0, tmax=600, n_fft=1024, n_overlap=128,
+                                  n_per_seg=256, picks=None, proj=False, n_jobs=workers, reject_by_annotation=True,
                                   average='mean', window='hamming', verbose=None)
+
+# # Convert power to dB scale.
+# psds_oft = 10 * np.log10(psds_oft)
 
 for _ in range(psds_oft.shape[0]):
     plt.plot(freqs, psds_oft[_, :])
@@ -684,23 +825,27 @@ plt.xlabel(xlabel)
 plt.ylabel(ylabel)
 plt.title(title + '_OFT')
 plt.gcf().subplots_adjust(bottom=0.15, left=0.18)
+plt.ticklabel_format(axis='both', style="sci", scilimits=(0,3))
 plt.savefig(sdir_oft + title + '.png')
 plt.show()
 
 mean_power_mPFC = psds_oft[:len(mpfc_ch), :].mean(axis=0)
+power_spectrum['mean_power_mPFC_oft'] = mean_power_mPFC
 sd_power_mPFC = psds_oft[:len(mpfc_ch), :].std(axis=0)
 plt.plot(freqs, mean_power_mPFC, label='mPFC')
-plt.fill_between(freqs, mean_power_mPFC - sd_power_mPFC, mean_power_mPFC + sd_power_mPFC, alpha=0.3)
+plt.fill_between(freqs, mean_power_mPFC - sd_power_mPFC, mean_power_mPFC + sd_power_mPFC, alpha=0.15)
 
 mean_power_vHPC = psds_oft[len(mpfc_ch):, :].mean(axis=0)
+power_spectrum['mean_power_vHPC_oft'] = mean_power_vHPC
 sd_power_vHPC = psds_oft[len(mpfc_ch):, :].std(axis=0)
 plt.plot(freqs, mean_power_vHPC, label='vHPC')
-plt.fill_between(freqs, mean_power_vHPC - sd_power_vHPC, mean_power_vHPC + sd_power_vHPC,  alpha=0.3)
+plt.fill_between(freqs, mean_power_vHPC - sd_power_vHPC, mean_power_vHPC + sd_power_vHPC,  alpha=0.15)
 
 plt.xlabel(xlabel)
 plt.ylabel(ylabel)
 plt.title(title + '_OFT')
 plt.gcf().subplots_adjust(bottom=0.15, left=0.18)
+plt.ticklabel_format(axis='both', style="sci", scilimits=(0,3))
 plt.legend()
 plt.savefig(sdir_oft + title + '_mean.png')
 plt.show()
@@ -709,60 +854,75 @@ plt.show()
 print('Mission Completed')
 
 #%%
-mean_power_mPFC = psds_arena_bef[:len(mpfc_ch), :].mean(axis=0)
-sd_power_mPFC = psds_arena_bef[:len(mpfc_ch), :].std(axis=0)
-plt.plot(freqs, mean_power_mPFC, label='mPFC_arena_bef')
-plt.fill_between(freqs, mean_power_mPFC - sd_power_mPFC, mean_power_mPFC + sd_power_mPFC, alpha=0.3)
+power_spectrum1 = pd.DataFrame(power_spectrum)
+power_spectrum1.to_csv(sdir_cage + 'power_spectrum_all_tasks.csv' )
 
-mean_power_mPFC = psds_arena[:len(mpfc_ch), :].mean(axis=0)
-sd_power_mPFC = psds_arena[:len(mpfc_ch), :].std(axis=0)
-plt.plot(freqs, mean_power_mPFC, label='mPFC_arena')
-plt.fill_between(freqs, mean_power_mPFC - sd_power_mPFC, mean_power_mPFC + sd_power_mPFC, alpha=0.3)
-
-mean_power_mPFC = psds_ezm[:len(mpfc_ch), :].mean(axis=0)
-sd_power_mPFC = psds_ezm[:len(mpfc_ch), :].std(axis=0)
-plt.plot(freqs, mean_power_mPFC, label='mPFC_ezm')
-plt.fill_between(freqs, mean_power_mPFC - sd_power_mPFC, mean_power_mPFC + sd_power_mPFC, alpha=0.3)
-
-mean_power_mPFC = psds_oft[:len(mpfc_ch), :].mean(axis=0)
-sd_power_mPFC = psds_oft[:len(mpfc_ch), :].std(axis=0)
-plt.plot(freqs, mean_power_mPFC, label='mPFC_oft')
-plt.fill_between(freqs, mean_power_mPFC - sd_power_mPFC, mean_power_mPFC + sd_power_mPFC, alpha=0.3)
-
+low_theta_power = power_spectrum1[(power_spectrum1['frequencies']>=3.5) & (power_spectrum1['frequencies']<=6.5)].sum()
+high_theta_power = power_spectrum1[(power_spectrum1['frequencies']>=6.5) & (power_spectrum1['frequencies']<=12.5)].sum()
+low_theta_power.to_csv(sdir_cage + 'low_theta_power_all_tasks.csv' )
+high_theta_power.to_csv(sdir_cage + 'high_theta_power_all_tasks.csv' )
+#%%
+power_spectrum1.iloc[:40].plot(x = 'frequencies',
+                    y = ['mean_power_mPFC_cage',
+                         'mean_power_mPFC_arena1',
+                         'mean_power_mPFC_recover_40min',
+                         'mean_power_mPFC_arena2',
+                         'mean_power_mPFC_ezm',
+                         'mean_power_mPFC_oft',
+                         ])
 plt.xlabel(xlabel)
 plt.ylabel(ylabel)
-plt.title(title + '_all_tasks_mPFC')
+plt.title(title + '_mPFC')
 plt.gcf().subplots_adjust(bottom=0.15, left=0.18)
-plt.legend()
-plt.savefig(sdir_arena_bef + title + '.png')
+plt.ticklabel_format(axis='y', style="sci", scilimits=(0,0))
+plt.savefig(sdir_cage + title + '_mPFC_all_tasks.png')
 plt.show()
 
-mean_power_vHPC = psds_arena_bef[len(mpfc_ch):, :].mean(axis=0)
-sd_power_vHPC = psds_arena_bef[len(mpfc_ch):, :].std(axis=0)
-plt.plot(freqs, mean_power_vHPC, label='vHPC_arena_bef')
-plt.fill_between(freqs, mean_power_vHPC - sd_power_vHPC, mean_power_vHPC + sd_power_vHPC, alpha=0.3)
+#%%
+power_spectrum1.iloc[:40].plot(x = 'frequencies',
+                    y = ['mean_power_vHPC_cage',
+                         'mean_power_vHPC_arena1',
+                         'mean_power_vHPC_recover_40min',
+                         'mean_power_vHPC_arena2',
+                         'mean_power_vHPC_ezm',
+                         'mean_power_vHPC_oft'])
+plt.xlabel(xlabel)
+plt.ylabel(ylabel)
+plt.title(title + '_vHPC')
+plt.gcf().subplots_adjust(bottom=0.15, left=0.18)
+plt.ticklabel_format(axis='y', style="sci", scilimits=(0,0))
+plt.savefig(sdir_cage + title + '_vHPC_all_tasks.png')
+plt.show()
 
-mean_power_vHPC = psds_arena[len(mpfc_ch):, :].mean(axis=0)
-sd_power_vHPC = psds_arena[len(mpfc_ch):, :].std(axis=0)
-plt.plot(freqs, mean_power_vHPC, label='vHPC_arena')
-plt.fill_between(freqs, mean_power_vHPC - sd_power_vHPC, mean_power_vHPC + sd_power_vHPC, alpha=0.3)
 
-mean_power_vHPC = psds_ezm[len(mpfc_ch):, :].mean(axis=0)
-sd_power_vHPC = psds_ezm[len(mpfc_ch):, :].std(axis=0)
-plt.plot(freqs, mean_power_vHPC, label='vHPC_ezm')
-plt.fill_between(freqs, mean_power_vHPC - sd_power_vHPC, mean_power_vHPC + sd_power_vHPC, alpha=0.3)
-
-mean_power_vHPC = psds_oft[len(mpfc_ch):, :].mean(axis=0)
-sd_power_vHPC = psds_oft[len(mpfc_ch):, :].std(axis=0)
-plt.plot(freqs, mean_power_vHPC, label='vHPC_oft')
-plt.fill_between(freqs, mean_power_vHPC - sd_power_vHPC, mean_power_vHPC + sd_power_vHPC, alpha=0.3)
+#%%
+power_spectrum1.iloc[:40].plot(x = 'frequencies',
+                    y = ['mean_power_mPFC_cage',
+                        'mean_power_mPFC_recover_10min',
+                         'mean_power_mPFC_recover_20min',
+                         'mean_power_mPFC_recover_30min',
+                         'mean_power_mPFC_recover_40min'])
 
 plt.xlabel(xlabel)
 plt.ylabel(ylabel)
-plt.title(title + '_all_tasks_vHPC')
+plt.title(title + '_mPFC')
 plt.gcf().subplots_adjust(bottom=0.15, left=0.18)
-plt.legend()
-plt.savefig(sdir_arena_bef + title + '.png')
+plt.ticklabel_format(axis='y', style="sci", scilimits=(0,0))
+plt.savefig(sdir_cage + title + '_mPFC_recovery.png')
+plt.show()
+#%%
+power_spectrum1.iloc[:40].plot(x = 'frequencies',
+                    y = ['mean_power_vHPC_cage',
+                        'mean_power_vHPC_recover_10min',
+                         'mean_power_vHPC_recover_20min',
+                         'mean_power_vHPC_recover_30min',
+                         'mean_power_vHPC_recover_40min'])
+plt.xlabel(xlabel)
+plt.ylabel(ylabel)
+plt.title(title + '_vHPC')
+plt.gcf().subplots_adjust(bottom=0.15, left=0.18)
+plt.ticklabel_format(axis='y', style="sci", scilimits=(0,0))
+plt.savefig(sdir_cage + title + '_vHPC_recovery.png')
 plt.show()
 
 #%%
@@ -774,30 +934,30 @@ plt.show()
     Output: Area Under the Curve
     '''
 
-theta_power = ephys.exg_auc(freqs, psds_arena[:22,:].mean(axis=0))
+# theta_power = ephys.exg_auc(freqs, psds_arena[:22,:].mean(axis=0))
 
 #%%
-import importlib
-importlib.reload(bifengephys.ephys)
-
-theta_power = ephys.exg_auc(freqs, psds_arena[:22,:].mean(axis=0))
+# import importlib
+# importlib.reload(bifengephys.ephys)
+#
+# theta_power = ephys.exg_auc(freqs, psds_arena[:22,:].mean(axis=0))
 
 #%%
 
-xdata = freqs
-ydata = psds_ezm[len(mpfc_ch):,:].mean(axis=0)
-import pandas as pd
-pd.DataFrame.from_dict({'xdata':xdata, 'ydata':ydata}).to_csv('F:/data.csv')
-popt, pcov = ephys.fit_exg(xdata, ydata, bounds=(0, [3., 1., 0.5]))
-
-plt.plot(xdata, ydata, 'b-', label='data')
-plt.plot(xdata, ephys.exg_fun(xdata, *popt), 'g--',
-         label='fit: a=%5.3f, b=%5.3f, c=%5.3f, u=%5.3f, s=%5.3f, b2=%5.3f, c2=%5.3f, u2=%5.3f' % tuple(popt))
-plt.legend()
-
-print(ephys.exg_auc(xdata, ydata))
-
-plt.show()
+# xdata = freqs
+# ydata = psds_ezm[len(mpfc_ch):,:].mean(axis=0)
+# import pandas as pd
+# pd.DataFrame.from_dict({'xdata':xdata, 'ydata':ydata}).to_csv('F:/data.csv')
+# popt, pcov = ephys.fit_exg(xdata, ydata, bounds=(0, [3., 1., 0.5]))
+#
+# plt.plot(xdata, ydata, 'b-', label='data')
+# plt.plot(xdata, ephys.exg_fun(xdata, *popt), 'g--',
+#          label='fit: a=%5.3f, b=%5.3f, c=%5.3f, u=%5.3f, s=%5.3f, b2=%5.3f, c2=%5.3f, u2=%5.3f' % tuple(popt))
+# plt.legend()
+#
+# print(ephys.exg_auc(xdata, ydata))
+#
+# plt.show()
 
 
 #%%
@@ -821,14 +981,14 @@ Example:
     plt.show()
 '''
 
-data1 = raw_arena.copy()
-psds, freqs = mne.time_frequency.psd_multitaper(data1, fmin=1, fmax=20, tmin=20, tmax=620, bandwidth=2.5, n_jobs=20)
-
-for _ in range(psds.shape[0]):
-    plt.plot(freqs, psds[_, :])
-
-plt.title('PSD using multitaper')
-plt.show()
+# data1 = raw_arena.copy()
+# psds, freqs = mne.time_frequency.psd_multitaper(data1, fmin=1, fmax=20, tmin=20, tmax=620, bandwidth=2.5, n_jobs=workers)
+#
+# for _ in range(psds.shape[0]):
+#     plt.plot(freqs, psds[_, :])
+#
+# plt.title('PSD using multitaper')
+# plt.show()
 
 #%%
 ### compute time-frequency representation using multitaper method, return power-time
@@ -839,7 +999,6 @@ decim=1, n_jobs=1, picks=None, average=True, verbose=None)
 freqs : ndarray, shape (n_freqs,)
         The frequencies in Hz.
         
-        
 elif method == 'multitaper':
         Ws = _make_dpss(sfreq, freqs, n_cycles=n_cycles,
                         time_bandwidth=time_bandwidth, zero_mean=zero_mean)
@@ -848,6 +1007,11 @@ elif method == 'multitaper':
 return power-time
 if dB:
         data = 10 * np.log10((data * data.conj()).real)
+        
+
+mne.time_frequency.psd_multitaper(inst, fmin=0, fmax=inf, tmin=None, tmax=None, bandwidth=None, 
+adaptive=False, low_bias=True, normalization='length', picks=None, proj=False, n_jobs=1, verbose=None
+
 '''
 #%%
 # #
@@ -857,45 +1021,31 @@ if dB:
 # data = raw_arena.copy()
 # sdir = sdir_arena
 # #
-# data = raw_ezm.copy()
-# sdir = sdir_ezm
+data = raw_ezm.copy()
+sdir = sdir_ezm
 # #
-data = raw_oft.copy()
-sdir = sdir_oft
+# data = raw_oft.copy()
+# sdir = sdir_oft
 
 epochs = mne.make_fixed_length_epochs(data, duration=2.6)
-freqs = np.arange(4., 13.)
-n_cycles = 7 #freqs / 2.
+freqs = np.arange(3.5, 13., 0.2)
+n_cycles = freqs / 2.
 power = mne.time_frequency.tfr_multitaper(epochs, freqs=freqs, n_cycles=n_cycles, time_bandwidth=4.0,
-                                          return_itc=False, n_jobs=20, picks=None, average=False)
+                                          return_itc=False, n_jobs=workers, picks=None, average=False)
 
 print('Mission Completed')
-#%%
-'''
-mne.time_frequency.psd_multitaper(inst, fmin=0, fmax=inf, tmin=None, tmax=None, bandwidth=None, 
-adaptive=False, low_bias=True, normalization='length', picks=None, proj=False, n_jobs=1, verbose=None
-'''
 
-# data = raw_arena.copy()
-# sdir = sdir_arena
-#
-# epochs = mne.make_fixed_length_epochs(data, duration=2.6)
-#
-# psds, freqs = mne.time_frequency.psd_multitaper(epochs, fmin=4, fmax=12, bandwidth=4, n_jobs=20)
-#
-# print('Mission Completed')
 
 #%%
 tpower = power.data
 tpower = np.mean(tpower, axis=3)# take the averaged power of 2.6 second
+tpower_46hz = np.mean(tpower[:, :, :16], axis=2) #(epoch, channel, freqs)
+tpower_712hz = np.mean(tpower[:, :, 16:], axis=2)
 
-# correlate all channels in vHPC with all the channels in the mPFC
-tpower_df = pd.DataFrame(tpower.mean(axis=2), columns=wanted_ch)
-
-corr_matrix = tpower_df.corr()
-
-plt.imshow(corr_matrix)
-plt.colorbar()
+tpower_46hz_all_ch = np.mean(tpower_46hz, axis=0)
+tpower_712hz_all_ch = np.mean(tpower_712hz, axis=0)
+plt.plot(tpower_46hz_all_ch)
+plt.plot(tpower_712hz_all_ch)
 plt.show()
 
 #%%
@@ -909,125 +1059,78 @@ plt.show()
 # tp_mpfc = tp[:, :16, :] ## mBWfus009
 # tp_vhipp = tp[:, 16:, :]
 
-# tp_mpfc = tp[:, :21, :] ## mBWfus011
+# tp_mpfc = tp[:, :21, :] ## mBFuss011
 # tp_vhipp = tp[:, 21:, :]
 
 # tp_mpfc = tp[:, :12, :] ## mBWfus012
 # tp_vhipp = tp[:, 12:, :]
 
-# tp_mpfc = tpower[20:250, :22, :] ## mBWfus025, ## choose 230 epochs [epochs, channels, freqs]
-# tp_vhipp_deep = tpower[20:250, 22:30, :]
-# tp_vhipp_shallow = tpower[20:250, 30:, :]
+#
+# tp_mpfc_46hz = tpower_46hz[20:250, :len(mpfc_ch)] ## mBWfus025, ## choose 230 epochs [epochs, channels, freqs]
+# tp_mpfc_712hz = tpower_712hz[20:250, :len(mpfc_ch)]
+# tp_vhipp_46hz = tpower_46hz[20:250, len(mpfc_ch):]
+# tp_vhipp_712hz = tpower_712hz[20:250, len(mpfc_ch):]
 
-# tp_mpfc = tpower[20:250, :3, :] ## mBWfus026, ## choose 230 epochs [epochs, channels, freqs]
-# # tp_vhipp_deep = tpower[20:250, :, :]
-# tp_vhipp_shallow = tpower[20:250, 3:, :]
-
-# tp_mpfc = tpower[20:250, :len(mpfc_ch), :] ## mBWfus027, ## choose 230 epochs [epochs, channels, freqs]
-# tp_vhipp_shallow = tpower[20:250, len(mpfc_ch):32, :]
-# tp_vhipp_deep = tpower[20:250, 32:, :]
-
-# tp_mpfc = tpower[20:250, :len(mpfc_ch), :] ## mBWfus028, ## choose 230 epochs [epochs, channels, freqs]
-# tp_vhipp_shallow = tpower[20:250, len(mpfc_ch):36, :]
-# tp_vhipp_deep = tpower[20:250, 36:, :]
-
-# tp_mpfc = tpower[20:250, :len(mpfc_ch), :] ## mBWfus031, ## choose 230 epochs [epochs, channels, freqs]
-# tp_vhipp_shallow = tpower[20:250, len(mpfc_ch):29, :]
-# tp_vhipp_deep = tpower[20:250, 29:, :]
-
-tp_mpfc = tpower[20:250, :20, :] ## mBWfus032, ## choose 230 epochs [epochs, channels, freqs]
-# tp_vhipp_shallow = tpower[20:250, len(mpfc_ch):len(mpfc_ch)+7, :]
-tp_vhipp_deep = tpower[20:250, 26:, :]
+tp_mpfc_46hz = tpower_46hz[20:250, :len(mpfc_ch)] ## mBWfus026, ## choose 230 epochs [epochs, channels, freqs]
+tp_mpfc_712hz = tpower_712hz[20:250, :len(mpfc_ch)]
+tp_vhipp_46hz = tpower_46hz[20:250, len(mpfc_ch):]
+tp_vhipp_712hz = tpower_712hz[20:250, len(mpfc_ch):]
 
 
 ## plot the theta power of the selected channels in the mPFC
-for i, freq in enumerate(freqs):
-    for _ in range(tp_mpfc.shape[1]):
-        plt.plot(tp_mpfc[:40, _, i])
-    title = 'Power ' + str(freq) + ' Hz, all ch in the mPFC'
-    plt.title(title)
-    plt.savefig(sdir + title + '.png')
-    plt.show()
-
-## plot the theta power of the selected channels in the vHPC, deep channels
-for i, freq in enumerate(freqs):
-    for _ in range(tp_vhipp_deep.shape[1]):
-        plt.plot(tp_vhipp_deep[:40, _, i])
-
-    title = 'Power ' + str(freq) + ' Hz, deep ch in the vHPC'
-    plt.title(title)
-    plt.savefig(sdir + title + '.png')
-    plt.show()
-
-# ## plot the theta power of the selected channels in the vHPC, shallow channels
-# for i, freq in enumerate(freqs):
-#     for _ in range(tp_vhipp_shallow.shape[1]):
-#         plt.plot(tp_vhipp_shallow[:40, _, i])
-#
-#     title = 'Power ' + str(freq) + ' Hz, shallow ch in the vHPC'
-#     plt.title(title)
-#     plt.savefig(sdir + title + '.png')
-#     plt.show()
-
-#%%
-
-cols = []
-for i in np.arange(4, 13):
-    cols.append('mPFC_' + str(i) + 'Hz')
-for i in np.arange(4, 13):
-    cols.append('vHPC_' + str(i) + 'Hz')
-
-tp_mpfc_mean = tp_mpfc.mean(axis=1) ## mean power of the selected channels, as their values are similar
-
-# tp_vhipp_shallow_mean = tp_vhipp_shallow.mean(axis=1)
-# tp_mpfc_shallow_vhipp = np.concatenate((tp_mpfc_mean, tp_vhipp_shallow_mean), axis=1)
-# tp_mpfc_shallow_vHPC = pd.DataFrame(data=tp_mpfc_shallow_vhipp, columns=cols)
-
-tp_vhipp_deep_mean = tp_vhipp_deep.mean(axis=1) ## mean power of the selected channels
-tp_mpfc_deep_vhipp = np.concatenate((tp_mpfc_mean, tp_vhipp_deep_mean), axis=1) # melt two arrays into one dataframe for correlation
-tp_mpfc_deep_vHPC = pd.DataFrame(data=tp_mpfc_deep_vhipp, columns=cols)
-
-
-corr_matrix_mpfc_dvHPC = tp_mpfc_deep_vHPC.corr(method='pearson')
-# corr_matrix_mpfc_shvHPC = tp_mpfc_shallow_vHPC.corr(method='pearson')
-
-plt.imshow(corr_matrix_mpfc_dvHPC)
-plt.colorbar()
+for _ in range(tp_mpfc_46hz.shape[1]):
+    plt.plot(tp_mpfc_46hz[:40, _])
+title = 'Power 4-6 Hz' + ' all ch in the mPFC'
+plt.title(title)
+plt.savefig(sdir + title + '.png')
 plt.show()
 
-# plt.imshow(corr_matrix_mpfc_shvHPC)
-# plt.colorbar()
-# plt.show()
+for _ in range(tp_mpfc_712hz.shape[1]):
+    plt.plot(tp_mpfc_712hz[:40, _])
+title = 'Power 7-12 Hz' + ' all ch in the mPFC'
+plt.title(title)
+plt.savefig(sdir + title + '.png')
+plt.show()
+
+## plot the theta power of the selected channels in the vHPC, deep channels
+for _ in range(tp_vhipp_46hz.shape[1]):
+    plt.plot(tp_vhipp_46hz[:40, _])
+title = 'Power 4-6 Hz' + ' all ch in the vHPC'
+plt.title(title)
+plt.savefig(sdir + title + '.png')
+plt.show()
+
+for _ in range(tp_vhipp_712hz.shape[1]):
+    plt.plot(tp_vhipp_712hz[:40, _])
+title = 'Power 7-12 Hz' + ' all ch in the vHPC'
+plt.title(title)
+plt.savefig(sdir + title + '.png')
+plt.show()
+
 
 #%%
-## plot and correlate the power of individual frequencies (4-12)
-corr_freqs=[]
+tp_mPFC_mean_46hz = tp_mpfc_46hz.mean(axis=1) ## mean power of the selected channels, as their values are similar
+tp_vHPC_mean_46hz = tp_vhipp_46hz.mean(axis=1) ## mean power of the selected channels
 
-col_mPFC = tp_mpfc_deep_vHPC.columns.tolist()[:9]
-col_vHPC = tp_mpfc_deep_vHPC.columns.tolist()[9:]
+tp_mPFC_mean_712hz = tp_mpfc_712hz.mean(axis=1) ## mean power of the selected channels, as their values are similar
+tp_vHPC_mean_712hz = tp_vhipp_712hz.mean(axis=1) ## mean power of the selected channels
+
+## plot and correlate the power of individual frequencies (4-12)
 
 xlabel = 'mPFC Power'
 ylabel = 'vHPC Power'
 
-for i, freq in enumerate(col_mPFC):
-    x = tp_mpfc_deep_vHPC[col_mPFC[i]]
-    y = tp_mpfc_deep_vHPC[col_vHPC[i]]
-    corr = x.corr(y, method='pearson')
-    corr_freqs.append(corr)
-    title = 'Power correlation deep ' + freq.split('_')[1]
-    plotting.power_correlation_plot(x, y, corr, sdir, title, xlabel, ylabel)
+x = tp_mPFC_mean_46hz
+y = tp_vHPC_mean_46hz
+corr = np.corrcoef(x,y)[0][1]
+title = 'Power correlation 4-6 Hz'
+plotting.power_correlation_plot(x, y, corr, sdir, title, xlabel, ylabel)
 
-## save the correlation efficients into a dataframe
-cols = []
-for i in np.arange(4, 13):
-    cols.append('Power correlation_' + str(i) + '_Hz')
-
-r_sqr = np.array(corr_freqs)**2
-
-corr_freqs = pd.DataFrame(data=[r_sqr], columns=cols)
-corr_freqs['Mean across all frequency'] = corr_freqs.mean(axis=0)
-
-corr_freqs.to_excel(sdir + 'Power_correlation_deep.xlsx')
+x = tp_mPFC_mean_712hz
+y = tp_vHPC_mean_712hz
+corr = np.corrcoef(x,y)[0][1]
+title = 'Power correlation 7-12 Hz'
+plotting.power_correlation_plot(x, y, corr, sdir, title, xlabel, ylabel)
 
 print('Mission Completed')
 
@@ -1113,33 +1216,862 @@ corr = x.corr(y, method='pearson')
 title = 'Power correlation 10-12 Hz'
 plotting.power_correlation_plot(x, y, corr, sdir, title, xlabel, ylabel)
 
+
 #%%
-events = pd.read_csv('2021-08-02_mBWfus025_EZM_ephys/2021-08-02_mBWfus025_EZM_ephys.csv', header=1)
+animal = mBWfus025
+task_date = 'ezm_0802'
+session = animal[task_date]
+sdir = session + '/results/'
+if not os.path.exists(sdir):
+    os.makedirs(sdir)
+print(sdir)
+#%%
+event_file = os.path.join(session, session + '.csv')
+print(event_file)
+events = pd.read_csv(event_file, header=1)
 close = events[events['metadata']=='{"EZM":"Close"}'][['temporal_segment_start', 'temporal_segment_end']]
 open = events[events['metadata']=='{"EZM":"Open"}'][['temporal_segment_start', 'temporal_segment_end']]
+LED_off = events[events['metadata']=='{"EZM":"LED_off"}']['temporal_segment_start'].to_numpy()
 
-close_start = close['temporal_segment_start']
-close_end = close['temporal_segment_end']
+close_start = close['temporal_segment_start'].to_numpy()
+close_end = close['temporal_segment_end'].to_numpy()
 
-open_start = open['temporal_segment_start']
-open_end = open['temporal_segment_end']
+open_start = open['temporal_segment_start'].to_numpy()
+open_end = open['temporal_segment_end'].to_numpy()
 
-five_min_idx = [np.where(open_start >=300)[0][0], np.where(open_end >= 300)[0][0]]
-ten_min_idx = [np.where(open_start >=600)[0][0], np.where(open_end >= 600)[0][0]]
+open_time_5min = 0
+mouse_in = close_start[0]
+five_min = 300 + mouse_in
+ten_min = 600 + mouse_in
+trans_5min = []
+trans_10min = []
 
-print(five_min_idx, ten_min_idx)
+for i in range(len(open_end)):
+    if open_end[i] <= five_min  and open_start[i] <= five_min:
+        dtime =open_end[i] - open_start[i]
+        open_time_5min += dtime
+    elif open_end[i] > five_min and open_start[i] <= five_min:
+        dtime = five_min - open_start[i]
+        open_time_5min += dtime
+    else:
+        break
+
+open_time_10min = 0
+for i in range(len(open_end)):
+    if open_end[i] <= ten_min and open_start[i] <=ten_min:
+        dtime =open_end[i] - open_start[i]
+        open_time_10min += dtime
+    elif open_end[i] > ten_min and open_start[i] <=ten_min:
+        dtime = ten_min - open_start[i]
+        open_time_10min += dtime
+    else:
+        break
+
+close_time_5min = 0
+for i in range(len(close_end)):
+    if close_end[i] <= five_min  and close_start[i] <= five_min:
+        dtime =close_end[i] - close_start[i]
+        close_time_5min += dtime
+        trans_5min.append(i)
+    elif close_end[i] > five_min and close_start[i] <= five_min:
+        dtime = five_min - close_start[i]
+        close_time_5min += dtime
+        trans_5min.append(i)
+    else:
+        break
+
+close_time_10min = 0
+for i in range(len(close_end)):
+    if close_end[i] <= ten_min and close_start[i] <=ten_min:
+        dtime =close_end[i] - close_start[i]
+        close_time_10min += dtime
+        trans_10min.append(i)
+
+    elif close_end[i] > ten_min and close_start[i] <=ten_min:
+        dtime = ten_min - close_start[i]
+        close_time_10min += dtime
+        trans_10min.append(i)
+    else:
+        break
+
+print('open_time_5min = ', open_time_5min, '\n',
+      'close_time_5min = ', close_time_5min, '\n',
+      'open_time_10min = ', open_time_10min, '\n',
+      'close_time_10min = ', close_time_10min)
+
+print('transition in 5 min ', trans_5min[-1], '\n',
+      'transition in 10 min ', trans_10min[-1],)
+
+ret = {}
+ret['open_time_5min'] = open_time_5min
+ret['close_time_5min'] = close_time_5min
+ret['transition_5min'] = trans_5min[-1]
+
+ret['open_time_10min'] = open_time_10min
+ret['close_time_10min'] = close_time_10min
+ret['transition_10min'] = trans_10min[-1]
+
+result = pd.DataFrame(ret, index=[0])
+print(open_end - open_start)
 
 #%%
-time_in_open_5min = np.sum(open_end.iloc[:11] - open_start.iloc[:11])
-time_in_open_10min = np.sum(open_end.iloc[:25] - open_start.iloc[:25]) + 600 - open_start.iloc[25]
-print(time_in_open_5min, time_in_open_10min)
+#%%
+duration = 900
+fps_v = 25
+pixel2cm = 0.186 ## 350 pixels = 65 cm
+crop_from = int(LED_off*fps_v)
+crop_till = int((LED_off + duration)*fps_v)
+
+loc, scorer = behav.load_location(session)
+loc = behav.calib_location(loc, sdir, task='ezm')
+loc = behav.get_locomotion(loc, fps=fps_v, move_cutoff=5, avgspd_win=9)
+# loc = behav.get_locomotion(loc)
+# loc, scorer = behav.load_location(animal[session])
+
+# loc, events = behav.loc_analyzer(session, start, duration, task='ezm', bp='head', fps=25) ## (rois_stats, transitions)
 
 #%%
+bps = loc.columns.levels[1].to_list()
+spd = []
+loc_x = []
+loc_y = []
+for bp in bps:
+    spd.append(loc[scorer, bp, 'speed_filtered'])
+    loc_x.append(loc[scorer, bp, 'x'])
+    loc_y.append(loc[scorer, bp, 'y'])
+
+## take the mean speed, location of head, shoulder, tail
+spd = np.array(spd).mean(axis=0)
+loc_x = np.array(loc_x).mean(axis=0)
+loc_y = np.array(loc_y).mean(axis=0)
+loc_x_alinged = loc_x[crop_from:]
+loc_y_alinged = loc_y[crop_from:]
+
+plt.figure(figsize=(8, 8))
+plt.scatter(loc_x_alinged, loc_y_alinged, alpha=0.2)
+plt.xlim(0, 450)
+plt.ylim(0, 450)
+plt.show()
+
+## plot the locomotion speed vs time
+plt.figure(figsize=(8, 6))
+spd_aligned = spd[crop_from:]*pixel2cm ## crop be time before LED_off, convert speed from pixel to cm
+t = np.arange(0, len(spd_aligned)/fps_v, 1/fps_v)
+
+plt.plot(t, spd_aligned)
+plt.xlabel('Time sec')
+plt.ylabel('Speed cm/s')
+plt.title('locomotion speed')
+plt.savefig(sdir_ezm + 'locomotion speed.png')
+plt.show()
+#%%
+## plot the distribution of the locomotion speed
+plt.figure(figsize=(8, 6))
+n, x, _ = plt.hist(spd_aligned, bins='auto',
+                   density=True,
+                   cumulative=False,
+                   histtype='step',
+                   linewidth=2.5)
+
+plt.xlabel('Speed cm/s')
+plt.ylabel('Percentage of time')
+plt.xlim(-1, 30)
+plt.title('Distribution of speed in EZM')
+plt.savefig(sdir_ezm + 'Speed distribution.png')
+plt.show()
+
+#%%
+from scipy import signal
+
+num_sample = int(len(spd_aligned)*500/fps_v)
+spd_upsampled = signal.resample(spd_aligned, num_sample)
+plt.plot(spd_upsampled)
+plt.show()
+
+#%%
+## check the statits of EZM-related events
+wanted = ['ROI_name', 'cumulative_time_in_roi_sec', 'avg_time_in_roi_sec', 'avg_vel_in_roi']
+ezm_stats = {key: events['rois_stats'][key] for key in wanted}
+ezm_stats = pd.DataFrame.from_dict(ezm_stats)
+# ezm_stats = ezm_stats.drop([1,3])
+ezm_stats
+
+
+# open_idx, close_idx, OTC_idx, prOTC_idx, prCTO_idx, nosedip_idx = behav.get_events(events, LED_off, 900)
+#
+# event_dict = dict(OTC = 1, prOTC= 2, prCTO = 3, nosedip = 4)
+#
+# OTC = behav.create_mne_events(OTC_idx, 1)
+# prOTC = behav.create_mne_events(prOTC_idx, 2)
+# prCTO = behav.create_mne_events(prCTO_idx, 3)
+# nosedip = behav.create_mne_events(nosedip_idx, 4)
+#
+# mne_events = behav.merge_events(OTC, prOTC, prCTO, nosedip)
+#
+# plt.plot(mne_events[:, 0])
+# plt.show()
+
+
+#%%
+srate = 500
+open_start_idx = np.round((open_start - LED_off) * srate)
+open_end_idx = np.round((open_end - LED_off) * srate)
+
+close_start_idx = np.round((close_start - LED_off) * srate)
+close_end_idx = np.round((close_end - LED_off) * srate)
+
+
+#%%
+lfp = ephys.column_by_pad(ephys.get_lfp(data_ezm)) ## crop the time series before LED_off
+lfp = lfp[wanted_ch]
+print(lfp.shape)
+ch_list= [str(el) for el in lfp.columns.tolist()]
+print(len(ch_list), ch_list)
+n_channels = len(ch_list)
+sampling_freq = 500  # in Hertz
+info = mne.create_info(n_channels, sfreq=sampling_freq)
+
+ch_types = ['ecog'] * n_channels
+info = mne.create_info(ch_list, ch_types=ch_types, sfreq=sampling_freq)
+info['bads'] = []  # Names of bad channels
+print(info)
+
+lfp_filtered = mne.filter.filter_data(data=lfp.T, sfreq=500, l_freq=0.5, h_freq=None)
+
+#%%
+open_lfp = []
+close_lfp = []
+open_spd = []
+close_spd = []
+
+## slice and concatenate LFP while the mouse was in the close area
+for i in range(len(close_end_idx)):
+    seg_lfp = lfp_filtered[:, int(close_start_idx[i]):int(close_end_idx[i])]
+    seg_spd = spd_upsampled[int(close_start_idx[i]):int(close_end_idx[i])]
+    close_lfp.append(seg_lfp)
+    close_spd.append(seg_spd)
+
+close_lfp = np.concatenate(close_lfp, axis=1 )
+close_spd = np.concatenate(close_spd)
+
+spd_1 = np.where(close_spd<=1)[0]
+close_lfp_1 = close_lfp[:, spd_1]
+
+spd_5 = np.where((close_spd>1) & (close_spd<=5))[0]
+close_lfp_5 = close_lfp[:, spd_5]
+
+spd_10 = np.where((close_spd>5) & (close_spd<=10))[0]
+close_lfp_10 = close_lfp[:, spd_10]
+
+spd_15 = np.where((close_spd>10) & (close_spd<=15))[0]
+close_lfp_15 = close_lfp[:, spd_15]
+
+spd_20 = np.where(close_spd>15)[0]
+close_lfp_20 = close_lfp[:, spd_20]
+
+## slice and concatenate LFP while the mouse was in the open area
+for i in range(len(open_end_idx)):
+    seg_lfp = lfp_filtered[:, int(open_start_idx[i]):int(open_end_idx[i])]
+    seg_spd = spd_upsampled[int(open_start_idx[i]):int(open_end_idx[i])]
+    open_lfp.append(seg_lfp)
+    open_spd.append(seg_spd)
+
+open_lfp = np.concatenate(open_lfp, axis=1 )
+open_spd = np.concatenate(open_spd)
+
+spd_1 = np.where(open_spd<=1)[0]
+open_lfp_1 = open_lfp[:, spd_1]
+
+spd_5 = np.where((open_spd>1) & (open_spd<=5))[0]
+open_lfp_5 = open_lfp[:, spd_5]
+
+spd_10 = np.where((open_spd>5) & (open_spd<=10))[0]
+open_lfp_10 = open_lfp[:, spd_10]
+
+spd_15 = np.where((open_spd>10) & (open_spd<=15))[0]
+open_lfp_15 = open_lfp[:, spd_15]
+
+spd_20 = np.where(open_spd>15)[0]
+open_lfp_20 = open_lfp[:, spd_20]
+
+
+
+raw_close = mne.io.RawArray(close_lfp, info)
+raw_open = mne.io.RawArray(open_lfp, info)
+
+#%%
+## plot the distribution of the locomotion speed
+plt.figure(figsize=(8, 6))
+plt.hist([close_spd, open_spd],
+         bins=50,
+         density=True,
+         # cumulative=True,
+         histtype='step',
+         linewidth=2.5,
+         label=['Close', 'Open'])
+
+plt.xlabel('Speed cm/s')
+plt.ylabel('Percentage of time')
+plt.xlim(-1, 30)
+plt.title('Distribution of speed in EZM')
+plt.legend(loc='upper right')
+plt.savefig(sdir_ezm + 'Speed distribution open vs close.png')
+plt.show()
+#%%
+workers=20
+
+#%%
+data =close_lfp_1
+psds_close_1, freqs = mne.time_frequency.psd_array_welch(data, sfreq=500, fmin=0, fmax=20, n_fft=1024, n_overlap=128,
+                                  n_per_seg=256, n_jobs=workers,
+                                  average='mean', window='hamming', verbose=None)
+
+data =close_lfp_5
+psds_close_5, freqs = mne.time_frequency.psd_array_welch(data, sfreq=500, fmin=0, fmax=20, n_fft=1024, n_overlap=128,
+                                  n_per_seg=256, n_jobs=workers,
+                                  average='mean', window='hamming', verbose=None)
+
+data =close_lfp_10
+psds_close_10, freqs = mne.time_frequency.psd_array_welch(data, sfreq=500, fmin=0, fmax=20, n_fft=1024, n_overlap=128,
+                                  n_per_seg=256, n_jobs=workers,
+                                  average='mean', window='hamming', verbose=None)
+
+data =close_lfp_15
+psds_close_15, freqs = mne.time_frequency.psd_array_welch(data, sfreq=500, fmin=0, fmax=20, n_fft=1024, n_overlap=128,
+                                  n_per_seg=256, n_jobs=workers,
+                                  average='mean', window='hamming', verbose=None)
+
+data =close_lfp_20
+psds_close_20, freqs = mne.time_frequency.psd_array_welch(data, sfreq=500, fmin=0, fmax=20, n_fft=1024, n_overlap=128,
+                                  n_per_seg=256, n_jobs=workers,
+                                  average='mean', window='hamming', verbose=None)
+
+#%% Compute the power spectrum against speed in the open area
+data =open_lfp_1
+psds_open_1, freqs = mne.time_frequency.psd_array_welch(data, sfreq=500, fmin=0, fmax=20, n_fft=1024, n_overlap=128,
+                                  n_per_seg=256, n_jobs=workers,
+                                  average='mean', window='hamming', verbose=None)
+
+data =open_lfp_5
+psds_open_5, freqs = mne.time_frequency.psd_array_welch(data, sfreq=500, fmin=0, fmax=20, n_fft=1024, n_overlap=128,
+                                  n_per_seg=256, n_jobs=workers,
+                                  average='mean', window='hamming', verbose=None)
+
+data =open_lfp_10
+psds_open_10, freqs = mne.time_frequency.psd_array_welch(data, sfreq=500, fmin=0, fmax=20, n_fft=1024, n_overlap=128,
+                                  n_per_seg=256, n_jobs=workers,
+                                  average='mean', window='hamming', verbose=None)
+
+data =open_lfp_15
+psds_open_15, freqs = mne.time_frequency.psd_array_welch(data, sfreq=500, fmin=0, fmax=20, n_fft=1024, n_overlap=128,
+                                  n_per_seg=256, n_jobs=workers,
+                                  average='mean', window='hamming', verbose=None)
+
+data =open_lfp_20
+psds_open_20, freqs = mne.time_frequency.psd_array_welch(data, sfreq=500, fmin=0, fmax=20, n_fft=1024, n_overlap=128,
+                                  n_per_seg=256, n_jobs=workers,
+                                  average='mean', window='hamming', verbose=None)
+
+#%% plot power spectrum against locomotion speed in the close area
+plt.plot(freqs, psds_close_1[:len(mpfc_ch), :].mean(axis=0), label='Close_mPFC_1cm/s')
+plt.plot(freqs, psds_close_5[:len(mpfc_ch), :].mean(axis=0), label='Close_mPFC_5cm/s')
+plt.plot(freqs, psds_close_10[:len(mpfc_ch), :].mean(axis=0), label='Close_mPFC_10cm/s')
+plt.plot(freqs, psds_close_15[:len(mpfc_ch), :].mean(axis=0), label='Close_mPFC_15cm/s')
+plt.plot(freqs, psds_close_20[:len(mpfc_ch), :].mean(axis=0), label='Close_mPFC_20cm/s')
+plt.xlabel('Freqs (Hz)')
+plt.ylabel('Power (uV**2/Hz)')
+plt.legend(loc='upper right')
+plt.savefig(sdir_ezm + 'Power spectrum_different speed in close.png')
+plt.show()
+
+#%% plot power spectrum against locomotion speed in the open area
+plt.plot(freqs, psds_open_1[:len(mpfc_ch), :].mean(axis=0), label='Open_mPFC_1cm/s')
+plt.plot(freqs, psds_open_5[:len(mpfc_ch), :].mean(axis=0), label='Open_mPFC_5cm/s')
+plt.plot(freqs, psds_open_10[:len(mpfc_ch), :].mean(axis=0), label='Open_mPFC_10cm/s')
+plt.plot(freqs, psds_open_15[:len(mpfc_ch), :].mean(axis=0), label='Open_mPFC_15cm/s')
+plt.plot(freqs, psds_open_20[:len(mpfc_ch), :].mean(axis=0), label='Open_mPFC_20cm/s')
+plt.xlabel('Freqs (Hz)')
+plt.ylabel('Power (uV**2/Hz)')
+plt.legend(loc='upper right')
+plt.savefig(sdir_ezm + 'Power spectrum_different speed in open.png')
+plt.show()
+
+#%%
+plt.plot(freqs, psds_close_1[:len(mpfc_ch), :].mean(axis=0), label='Close_mPFC_1cm/s')
+plt.plot(freqs, psds_open_1[:len(mpfc_ch), :].mean(axis=0), label='Open_mPFC_1cm/s')
+plt.xlabel('Freqs (Hz)')
+plt.ylabel('Power (uV**2/Hz)')
+plt.legend(loc='upper right')
+plt.savefig(sdir_ezm + 'Power spectrum_1cmperS.png')
+plt.show()
+
+plt.plot(freqs, psds_close_5[:len(mpfc_ch), :].mean(axis=0), label='Close_mPFC_5cm/s')
+plt.plot(freqs, psds_open_5[:len(mpfc_ch), :].mean(axis=0), label='Open_mPFC_5cm/s')
+plt.xlabel('Freqs (Hz)')
+plt.ylabel('Power (uV**2/Hz)')
+plt.legend(loc='upper right')
+plt.savefig(sdir_ezm + 'Power spectrum_5cmperS.png')
+plt.show()
+
+
+plt.plot(freqs, psds_close_10[:len(mpfc_ch), :].mean(axis=0), label='Close_mPFC_10cm/s')
+plt.plot(freqs, psds_open_10[:len(mpfc_ch), :].mean(axis=0), label='Open_mPFC_10cm/s')
+plt.xlabel('Freqs (Hz)')
+plt.ylabel('Power (uV**2/Hz)')
+plt.legend(loc='upper right')
+plt.savefig(sdir_ezm + 'Power spectrum_10cmperS.png')
+plt.show()
+
+plt.plot(freqs, psds_close_15[:len(mpfc_ch), :].mean(axis=0), label='Close_mPFC_15cm/s')
+plt.plot(freqs, psds_open_15[:len(mpfc_ch), :].mean(axis=0), label='Open_mPFC_15cm/s')
+plt.xlabel('Freqs (Hz)')
+plt.ylabel('Power (uV**2/Hz)')
+plt.legend(loc='upper right')
+plt.savefig(sdir_ezm + 'Power spectrum_15cmperS.png')
+plt.show()
+
+
+plt.plot(freqs, psds_close_20[:len(mpfc_ch), :].mean(axis=0), label='Close_mPFC_20cm/s')
+plt.plot(freqs, psds_open_20[:len(mpfc_ch), :].mean(axis=0), label='Open_mPFC_20cm/s')
+plt.xlabel('Freqs (Hz)')
+plt.ylabel('Power (uV**2/Hz)')
+plt.legend(loc='upper right')
+plt.savefig(sdir_ezm + 'Power spectrum_20cmperS.png')
+plt.show()
+
+#%%
+data =close_lfp
+psds_close, freqs = mne.time_frequency.psd_array_welch(data, sfreq=500, fmin=0, fmax=20, n_fft=1024, n_overlap=128,
+                                  n_per_seg=256, n_jobs=workers,
+                                  average='mean', window='hamming', verbose=None)
+
+# # Convert power to dB scale.
+# psds_close = 10 * np.log10(psds_close)
+
+title = 'Power Spectrum'
+xlabel = 'Frequency (Hz)'
+ylabel = 'Power (uV**2/Hz)'
+
+#%%
+for _ in range(psds_close.shape[0]):
+    plt.plot(freqs, psds_close[_, :])
+plt.xlabel(xlabel)
+plt.ylabel(ylabel)
+plt.title(title + '_close')
+plt.gcf().subplots_adjust(bottom=0.15, left=0.18)
+plt.ticklabel_format(axis='both', style="sci", scilimits=(0,15))
+plt.savefig(sdir_ezm + title + '_close.svg', dpi=300, transparent=True)
+plt.show()
+
+mean_power_mPFC = psds_close[:len(mpfc_ch), :].mean(axis=0)
+sd_power_mPFC = psds_close[:len(mpfc_ch), :].std(axis=0)
+plt.plot(freqs, mean_power_mPFC, label='mPFC')
+plt.fill_between(freqs, mean_power_mPFC - sd_power_mPFC, mean_power_mPFC + sd_power_mPFC, alpha=0.15)
+
+mean_power_vHPC = psds_close[len(mpfc_ch):, :].mean(axis=0)
+sd_power_vHPC = psds_close[len(mpfc_ch):, :].std(axis=0)
+plt.plot(freqs, mean_power_vHPC, label='vHPC')
+plt.fill_between(freqs, mean_power_vHPC - sd_power_vHPC, mean_power_vHPC + sd_power_vHPC,  alpha=0.15)
+
+plt.xlabel(xlabel)
+plt.ylabel(ylabel)
+plt.title(title + '_close')
+plt.gcf().subplots_adjust(bottom=0.15, left=0.18)
+plt.ticklabel_format(axis='both', style="sci", scilimits=(0,3))
+plt.legend(fontsize=10)
+plt.savefig(sdir_ezm + title + '_mean_close.svg', dpi=300, transparent=True)
+plt.show()
+#%%
+data =open_lfp
+psds_open, freqs = mne.time_frequency.psd_array_welch(data, sfreq=500, fmin=0, fmax=20, n_fft=1024, n_overlap=128,
+                                  n_per_seg=256, n_jobs=workers,
+                                  average='mean', window='hamming', verbose=None)
+
+# psds_open = 10 * np.log10(psds_open)
+
+
+for _ in range(psds_open.shape[0]):
+    plt.plot(freqs, psds_open[_, :])
+plt.xlabel(xlabel)
+plt.ylabel(ylabel)
+plt.title(title + '_open')
+plt.gcf().subplots_adjust(bottom=0.15, left=0.18)
+plt.savefig(sdir_ezm + title + '_open.svg', dpi=300, transparent=True)
+plt.show()
+
+mean_power_mPFC = psds_open[:len(mpfc_ch), :].mean(axis=0)
+sd_power_mPFC = psds_open[:len(mpfc_ch), :].std(axis=0)
+plt.plot(freqs, mean_power_mPFC, label='mPFC')
+plt.fill_between(freqs, mean_power_mPFC - sd_power_mPFC, mean_power_mPFC + sd_power_mPFC, alpha=0.15)
+
+mean_power_vHPC = psds_open[len(mpfc_ch):, :].mean(axis=0)
+sd_power_vHPC = psds_open[len(mpfc_ch):, :].std(axis=0)
+plt.plot(freqs, mean_power_vHPC, label='vHPC')
+plt.fill_between(freqs, mean_power_vHPC - sd_power_vHPC, mean_power_vHPC + sd_power_vHPC,  alpha=0.15)
+
+plt.xlabel(xlabel)
+plt.ylabel(ylabel)
+plt.title(title + '_open')
+plt.gcf().subplots_adjust(bottom=0.15, left=0.18)
+plt.ticklabel_format(axis='both', style="sci", scilimits=(0,15))
+plt.legend(fontsize=14)
+plt.savefig(sdir_ezm + title + '_mean_open.svg', dpi=300, transparent=True)
+plt.show()
+#%%
+## plot the power spectrum open area vs close area
+mean_power_mPFC = psds_open[:len(mpfc_ch), :].mean(axis=0)
+sd_power_mPFC = psds_open[:len(mpfc_ch), :].std(axis=0)
+plt.plot(freqs, mean_power_mPFC, label='mPFC_open')
+plt.fill_between(freqs, mean_power_mPFC - sd_power_mPFC, mean_power_mPFC + sd_power_mPFC, alpha=0.15)
+
+mean_power_mPFC = psds_close[:len(mpfc_ch), :].mean(axis=0)
+sd_power_mPFC = psds_close[:len(mpfc_ch), :].std(axis=0)
+plt.plot(freqs, mean_power_mPFC, label='mPFC_enclosed')
+plt.fill_between(freqs, mean_power_mPFC - sd_power_mPFC, mean_power_mPFC + sd_power_mPFC, alpha=0.15)
+
+plt.xlabel(xlabel)
+plt.ylabel(ylabel)
+plt.ylim(0, 1000)
+# plt.title(title + '_mPFC')
+plt.gcf().subplots_adjust(bottom=0.15, left=0.18)
+# plt.ticklabel_format(axis='both', style="sci", scilimits=(0,3))
+plt.legend(fontsize=13)
+plt.savefig(sdir_ezm + title + '_mPFC_open_vs_close.svg', dpi=300, transparent=True)
+plt.show()
+
+mean_power_vHPC = psds_open[len(mpfc_ch):, :].mean(axis=0)
+sd_power_vHPC = psds_open[len(mpfc_ch):, :].std(axis=0)
+plt.plot(freqs, mean_power_vHPC, label='vHPC_open')
+plt.fill_between(freqs, mean_power_vHPC - sd_power_vHPC, mean_power_vHPC + sd_power_vHPC,  alpha=0.15)
+
+mean_power_vHPC = psds_close[len(mpfc_ch):, :].mean(axis=0)
+sd_power_vHPC = psds_close[len(mpfc_ch):, :].std(axis=0)
+plt.plot(freqs, mean_power_vHPC, label='vHPC_enclosed')
+plt.fill_between(freqs, mean_power_vHPC - sd_power_vHPC, mean_power_vHPC + sd_power_vHPC,  alpha=0.15)
+
+plt.xlabel(xlabel)
+plt.ylabel(ylabel)
+# plt.ylim(0, 2000)
+# plt.title(title + '_vHPC')
+plt.gcf().subplots_adjust(bottom=0.15, left=0.18)
+# plt.ticklabel_format(axis='both', style="sci", scilimits=(0,3))
+plt.legend(fontsize=13)
+plt.savefig(sdir_ezm + title + '_vHPC_open_vs_close.svg', dpi=300, transparent=True)
+plt.show()
+
+
+#%%
+data =close_lfp
+psds_close, freqs = mne.time_frequency.psd_array_welch(data, sfreq=500, fmin=30, fmax=100, n_fft=1024, n_overlap=128,
+                                  n_per_seg=256, n_jobs=workers,
+                                  average='mean', window='hamming', verbose=None)
+
+
+title = 'Power Spectrum Welch'
+xlabel = 'Frequency'
+ylabel = 'Power'
+
+for _ in range(psds_close.shape[0]):
+    plt.plot(freqs, psds_close[_, :])
+plt.xlabel(xlabel)
+plt.ylabel(ylabel)
+plt.title(title + '_gamma_close')
+plt.gcf().subplots_adjust(bottom=0.15, left=0.18)
+plt.ticklabel_format(axis='both', style="sci", scilimits=(0,3))
+plt.savefig(sdir_ezm + title + '_gamma_close.png', transparent=True)
+plt.show()
+
+mean_power_mPFC = psds_close[:len(mpfc_ch), :].mean(axis=0)
+sd_power_mPFC = psds_close[:len(mpfc_ch), :].std(axis=0)
+plt.plot(freqs, mean_power_mPFC, label='mPFC')
+plt.fill_between(freqs, mean_power_mPFC - sd_power_mPFC, mean_power_mPFC + sd_power_mPFC, alpha=0.15)
+
+mean_power_vHPC = psds_close[len(mpfc_ch):, :].mean(axis=0)
+sd_power_vHPC = psds_close[len(mpfc_ch):, :].std(axis=0)
+plt.plot(freqs, mean_power_vHPC, label='vHPC')
+plt.fill_between(freqs, mean_power_vHPC - sd_power_vHPC, mean_power_vHPC + sd_power_vHPC,  alpha=0.15)
+
+plt.xlabel(xlabel)
+plt.ylabel(ylabel)
+plt.title(title + '_gamma_close')
+plt.gcf().subplots_adjust(bottom=0.15, left=0.18)
+plt.ticklabel_format(axis='both', style="sci", scilimits=(0,3))
+plt.legend()
+plt.savefig(sdir_ezm + title + '_gamma_mean_close.png', transparent=True)
+plt.show()
+
+print('Mission Completed')
+
+data =open_lfp
+psds_open, freqs = mne.time_frequency.psd_array_welch(data, sfreq=500, fmin=30, fmax=100, n_fft=1024, n_overlap=128,
+                                  n_per_seg=256, n_jobs=workers,
+                                  average='mean', window='hamming', verbose=None)
+
+
+title = 'Power Spectra Welch'
+xlabel = 'Frequency'
+ylabel = 'Power'
+
+for _ in range(psds_open.shape[0]):
+    plt.plot(freqs, psds_open[_, :])
+plt.xlabel(xlabel)
+plt.ylabel(ylabel)
+plt.title(title + '_gamma_open')
+plt.gcf().subplots_adjust(bottom=0.15, left=0.18)
+plt.ticklabel_format(axis='both', style="sci", scilimits=(0,3))
+plt.savefig(sdir_ezm + title + '_gamma_open.png', transparent=True)
+plt.show()
+
+mean_power_mPFC = psds_open[:len(mpfc_ch), :].mean(axis=0)
+sd_power_mPFC = psds_open[:len(mpfc_ch), :].std(axis=0)
+plt.plot(freqs, mean_power_mPFC, label='mPFC')
+plt.fill_between(freqs, mean_power_mPFC - sd_power_mPFC, mean_power_mPFC + sd_power_mPFC, alpha=0.15)
+
+mean_power_vHPC = psds_open[len(mpfc_ch):, :].mean(axis=0)
+sd_power_vHPC = psds_open[len(mpfc_ch):, :].std(axis=0)
+plt.plot(freqs, mean_power_vHPC, label='vHPC')
+plt.fill_between(freqs, mean_power_vHPC - sd_power_vHPC, mean_power_vHPC + sd_power_vHPC,  alpha=0.15)
+
+plt.xlabel(xlabel)
+plt.ylabel(ylabel)
+plt.title(title + '_gamma_open')
+plt.gcf().subplots_adjust(bottom=0.15, left=0.18)
+plt.ticklabel_format(axis='both', style="sci", scilimits=(0,3))
+plt.legend()
+plt.savefig(sdir_ezm + title + '_gamma_mean_open.png', transparent=True)
+plt.show()
+
+print('Mission Completed')
+
+
+mean_power_mPFC = psds_open[:len(mpfc_ch), :].mean(axis=0)
+sd_power_mPFC = psds_open[:len(mpfc_ch), :].std(axis=0)
+plt.plot(freqs, mean_power_mPFC, label='mPFC_open')
+plt.fill_between(freqs, mean_power_mPFC - sd_power_mPFC, mean_power_mPFC + sd_power_mPFC, alpha=0.15)
+
+mean_power_mPFC = psds_close[:len(mpfc_ch), :].mean(axis=0)
+sd_power_mPFC = psds_close[:len(mpfc_ch), :].std(axis=0)
+plt.plot(freqs, mean_power_mPFC, label='mPFC_close')
+plt.fill_between(freqs, mean_power_mPFC - sd_power_mPFC, mean_power_mPFC + sd_power_mPFC, alpha=0.15)
+
+plt.xlabel(xlabel)
+plt.ylabel(ylabel)
+plt.title(title + '_mPFC')
+plt.gcf().subplots_adjust(bottom=0.15, left=0.18)
+plt.ticklabel_format(axis='both', style="sci", scilimits=(0,3))
+plt.legend()
+plt.savefig(sdir_ezm + title + '_gamma_mPFC_open_vs_close.png', transparent=True)
+plt.show()
+
+mean_power_vHPC = psds_open[len(mpfc_ch):, :].mean(axis=0)
+sd_power_vHPC = psds_open[len(mpfc_ch):, :].std(axis=0)
+plt.plot(freqs, mean_power_vHPC, label='vHPC_open')
+plt.fill_between(freqs, mean_power_vHPC - sd_power_vHPC, mean_power_vHPC + sd_power_vHPC,  alpha=0.15)
+
+mean_power_vHPC = psds_close[len(mpfc_ch):, :].mean(axis=0)
+sd_power_vHPC = psds_close[len(mpfc_ch):, :].std(axis=0)
+plt.plot(freqs, mean_power_vHPC, label='vHPC_close')
+plt.fill_between(freqs, mean_power_vHPC - sd_power_vHPC, mean_power_vHPC + sd_power_vHPC,  alpha=0.15)
+
+plt.xlabel(xlabel)
+plt.ylabel(ylabel)
+plt.title(title + '_gamma_vHPC')
+plt.gcf().subplots_adjust(bottom=0.15, left=0.18)
+plt.ticklabel_format(axis='both', style="sci", scilimits=(0,3))
+plt.legend()
+plt.savefig(sdir_ezm + title + '_gamma_vHPC_open_vs_close.png', transparent=True)
+plt.show()
+
+#%%
+freqs = np.arange(3.5, 13., 0.2)
+n_low_theta = len(np.where(freqs <= 6.5)[0])
+n_low_theta = len(np.where(freqs > 6.5)[0])
+n_cycles = freqs / 2.
+
+epochs = mne.make_fixed_length_epochs(raw_close, duration=2.6)
+power_close = mne.time_frequency.tfr_multitaper(epochs, freqs=freqs, n_cycles=n_cycles, time_bandwidth=4.0,
+                                          return_itc=False, n_jobs=workers, picks=None, average=False)
+
+## power = [epochs, channels, freqs, time_points]
+#%%
+epochs = mne.make_fixed_length_epochs(raw_open, duration=2.6)
+power_open = mne.time_frequency.tfr_multitaper(epochs, freqs=freqs, n_cycles=n_cycles, time_bandwidth=4.0,
+                                          return_itc=False, n_jobs=workers, picks=None, average=False)
+
+#%% ## power correlation when the mouse is in the closed area
+tpower = power_close.data                        ## power = [epochs, channels, freqs, time_points]
+tpower = np.mean(tpower, axis=3)          # take the averaged power of each epoch
+tpower_low = np.mean(tpower[:, :, :n_low_theta], axis=2)    #(epoch, channel, freqs) 4-6 hz
+tpower_high = np.mean(tpower[:, :, n_low_theta:], axis=2)   # 7-12 hz
+
+tp_low_mPFC  = tpower_low[:, :len(mpfc_ch)] ##[epochs, channels]
+tp_high_mPFC  = tpower_high[:, :len(mpfc_ch)]
+tp_low_vHPC  = tpower_low[:, len(mpfc_ch):]
+tp_high_vHPC = tpower_high[:, len(mpfc_ch):]
+
+
+## plot the theta power of the selected channels in the mPFC
+for _ in range(tp_low_mPFC.shape[1]):
+    plt.plot(tp_low_mPFC[:40, _])
+title = 'Close_Low_theta_power_all_ch_mPFC'
+plt.title(title)
+plt.savefig(sdir_ezm + title + '.png')
+plt.show()
+
+for _ in range(tp_high_mPFC.shape[1]):
+    plt.plot(tp_high_mPFC[:40, _])
+title = 'Close_High_theta_power_all_ch_mPFC'
+plt.title(title)
+plt.savefig(sdir_ezm + title + '.png')
+plt.show()
+
+## plot the theta power of the selected channels in the vHPC
+for _ in range(tp_low_vHPC.shape[1]):
+    plt.plot(tp_low_vHPC[:40, _])
+title = 'Close_Low_theta_power_all_ch_vHPC'
+plt.title(title)
+plt.savefig(sdir_ezm + title + '.png')
+plt.show()
+
+for _ in range(tp_high_vHPC.shape[1]):
+    plt.plot(tp_high_vHPC[:40, _])
+title = 'Close_High_theta_power_all_ch_vHPC'
+plt.title(title)
+plt.savefig(sdir_ezm + title + '.png')
+plt.show()
+
+tp_low_mPFC = tp_low_mPFC.mean(axis=1) ## mean power of the selected channels, as their values are similar
+tp_low_vHPC = tp_low_vHPC.mean(axis=1) ## mean power of the selected channels
+
+tp_high_mPFC = tp_high_mPFC.mean(axis=1) ## mean power of the selected channels, as their values are similar
+tp_high_vHPC = tp_high_vHPC.mean(axis=1) ## mean power of the selected channels
+
+## plot and correlate the power of individual frequencies (4-12)
+
+xlabel = 'mPFC Power'
+ylabel = 'vHPC Power'
+
+x = tp_low_mPFC[:100]
+y = tp_low_vHPC[:100]
+corr = np.corrcoef(x,y)[0][1]
+title = 'Close_low_theta_Power correlation'
+plotting.power_correlation_plot(x, y, corr, sdir, title, xlabel, ylabel)
+
+x = tp_high_mPFC[:100]
+y = tp_high_vHPC[:100]
+corr = np.corrcoef(x,y)[0][1]
+title = 'Close_high_theta_Power correlation'
+plotting.power_correlation_plot(x, y, corr, sdir, title, xlabel, ylabel)
+
+print('Mission Completed')
+
+
+#%% ## power correlation when the mouse is in the open area
+tpower = power_open.data                        ## power = [epochs, channels, freqs, time_points]
+tpower = np.mean(tpower, axis=3)          # take the averaged power of each epoch
+tpower_low = np.mean(tpower[:, :, :n_low_theta], axis=2)    #(epoch, channel, freqs) 4-6 hz
+tpower_high = np.mean(tpower[:, :, n_low_theta:], axis=2)   # 7-12 hz
+
+tp_low_mPFC  = tpower_low[:, :len(mpfc_ch)] ##[epochs, channels]
+tp_high_mPFC  = tpower_high[:, :len(mpfc_ch)]
+tp_low_vHPC  = tpower_low[:, len(mpfc_ch):]
+tp_high_vHPC = tpower_high[:, len(mpfc_ch):]
+
+
+## plot the theta power of the selected channels in the mPFC
+for _ in range(tp_low_mPFC.shape[1]):
+    plt.plot(tp_low_mPFC[:40, _])
+title = 'Open_Low_theta_power_all_ch_mPFC'
+plt.title(title)
+plt.savefig(sdir_ezm + title + '.png')
+plt.show()
+
+for _ in range(tp_high_mPFC.shape[1]):
+    plt.plot(tp_high_mPFC[:40, _])
+title = 'OPen_High_theta_power_all_ch_mPFC'
+plt.title(title)
+plt.savefig(sdir_ezm + title + '.png')
+plt.show()
+
+## plot the theta power of the selected channels in the vHPC
+for _ in range(tp_low_vHPC.shape[1]):
+    plt.plot(tp_low_vHPC[:40, _])
+title = 'Open_Low_theta_power_all_ch_vHPC'
+plt.title(title)
+plt.savefig(sdir_ezm + title + '.png')
+plt.show()
+
+for _ in range(tp_high_vHPC.shape[1]):
+    plt.plot(tp_high_vHPC[:40, _])
+title = 'Open_High_theta_power_all_ch_vHPC'
+plt.title(title)
+plt.savefig(sdir_ezm + title + '.png')
+plt.show()
+
+tp_low_mPFC = tp_low_mPFC.mean(axis=1) ## mean power of the selected channels, as their values are similar
+tp_low_vHPC = tp_low_vHPC.mean(axis=1) ## mean power of the selected channels
+
+tp_high_mPFC = tp_high_mPFC.mean(axis=1) ## mean power of the selected channels, as their values are similar
+tp_high_vHPC = tp_high_vHPC.mean(axis=1) ## mean power of the selected channels
+
+## plot and correlate the power of individual frequencies (4-12)
+
+xlabel = 'mPFC Power'
+ylabel = 'vHPC Power'
+
+x = tp_low_mPFC[:100]
+y = tp_low_vHPC[:100]
+corr = np.corrcoef(x,y)[0][1]
+title = 'Open_low_theta_Power correlation'
+plotting.power_correlation_plot(x, y, corr, sdir, title, xlabel, ylabel)
+
+x = tp_high_mPFC[:100]
+y = tp_high_vHPC[:100]
+corr = np.corrcoef(x,y)[0][1]
+title = 'Open_high_theta_Power correlation'
+plotting.power_correlation_plot(x, y, corr, sdir, title, xlabel, ylabel)
+
+print('Mission Completed')
+
+#%% Compute the coherence matrix of fixed-length epochs
+epochs = mne.make_fixed_length_epochs(raw_close, duration=2.6)
+
+#%%
+epochs_data = epochs.get_data()
+
+
+#%%
+
+con, freqs, times, n_epochs, n_tapers = mne.connectivity.spectral_connectivity(epochs_data[0, :, :], method='coh', indices=None, sfreq=500,
+                                       mode='multitaper', fmin=1.0, fmax=20.0, fskip=0,
+                                       faverage=False, tmin=None, tmax=None, mt_bandwidth=None,
+                                       mt_adaptive=False, mt_low_bias=True, cwt_freqs=None, cwt_n_cycles=7,
+                                       block_size=1000, n_jobs=workers, verbose=None)
+
+
+
+#%%
+plt.imshow(con.mean(axis=-1))
+plt.colorbar()
+plt.show()
+
 
 
 #%%
 raw = raw_ezm.copy()
 sdir = sdir_ezm
+
+event_dict = dict(OTC = 1, CTO = 2) #, nosedip = 3)
+OTC = behav.create_mne_events(close_start_idx[1:], 1)
+# prOTC = behav.create_mne_events(prOTC_idx, 2)
+CTO = behav.create_mne_events(close_end_idx, 2)
+# nosedip = behav.create_mne_events(nosedip_idx, 4)
+
+events = np.concatenate((OTC, CTO), axis=0)
+mne_events = events[events[:,0].argsort()]
+
+plt.plot(mne_events[:, 0])
+plt.show()
 
 ch_mPFC = [str(el) for el in mpfc_ch]
 ch_vHPC = [str(el) for el in vhipp_ch]
@@ -1152,61 +2084,99 @@ epochs_vHPC = mne.Epochs(raw, mne_events, event_id=event_dict, tmin=-1.0, tmax=2
 # fig = epochs_mPFC.plot()
 
 #%%
-prCTO_vHPC = epochs_vHPC['prCTO']
-prCTO_mPFC = epochs_mPFC['prCTO']
+CTO_vHPC = epochs_vHPC['CTO']
+CTO_mPFC = epochs_mPFC['CTO']
 
 OTC_vHPC = epochs_vHPC['OTC']
 OTC_mPFC = epochs_mPFC['OTC']
 #%%
-
+# CTO_vHPC.plot_image(combine='gfp')
+CTO_mPFC.plot_image(combine='gfp')
 #%%
-prCTO_vHPC.plot_psd(fmin=0.5, fmax=20, average=True)
+CTO_vHPC.plot_psd(fmin=0.5, fmax=20, average=True)
 OTC_vHPC.plot_psd(fmin=0.5, fmax=20, average=True)
-prCTO_mPFC.plot_psd(fmin=0.5, fmax=20, average=True)
+CTO_mPFC.plot_psd(fmin=0.5, fmax=20, average=True)
 OTC_mPFC.plot_psd(fmin=0.5, fmax=20, average=True)
 #%%
-freqs = np.arange(1., 20., 0.5)
+freqs = np.arange(1., 20., 0.2)
 # vmin, vmax = -3., 3.  # Define our color limits.
 
 n_cycles = freqs / 2.
 time_bandwidth = 4.0 # small value, higher
-power = mne.time_frequency.tfr_multitaper(prCTO_vHPC, freqs=freqs, n_cycles=n_cycles,
-                       time_bandwidth=time_bandwidth, return_itc=False, average=True)
 
 #%%
+## return container for time-freqency data (n_channels, n_feqs, n_times)
+power = mne.time_frequency.tfr_multitaper(CTO_vHPC, freqs=freqs, n_cycles=n_cycles,
+                                          time_bandwidth=time_bandwidth,
+                                          return_itc=False,
+                                          n_jobs=workers,
+                                          average=True)
 
-power = mne.time_frequency.tfr_multitaper(prCTO_mPFC, freqs=freqs, n_cycles=n_cycles,
-                       time_bandwidth=time_bandwidth, return_itc=False, average=True)
-#%%
-# Plot results. Baseline correct based on first 100 ms.
-power.plot(picks='all', baseline=(-1, 0), mode='mean', tmin=None, tmax=None, fmin=None, fmax=None,
-           vmin=-2*1e-6, vmax=2*1e-6, cmap='RdBu_r', dB=False, colorbar=True, show=True, title=None,
+fig = power.plot(baseline=(-1, 0), mode='mean', tmin=None, tmax=None, fmin=None, fmax=None,
+           dB=False, colorbar=True, show=True, title=None,
            axes=None, layout=None, yscale='auto', mask=None, mask_style=None, mask_cmap='Greys',
            mask_alpha=0.1, combine=None, exclude=[], verbose=None)
 
+ax = fig.axes[0]
+ax.set_ylim(0, 20)
+fig.savefig(sdir_ezm +'Spectrogram_close_to_open_vHPC.svg', transparent=True)
 
 #%%
+power = mne.time_frequency.tfr_multitaper(CTO_mPFC, freqs=freqs, n_cycles=n_cycles,
+                                          time_bandwidth=time_bandwidth,
+                                          return_itc=False,
+                                          n_jobs=workers,
+                                          average=True)
+
+fig = power.plot(baseline=(-1.0, 0), mode='mean', tmin=None, tmax=None, fmin=None, fmax=None,
+           dB=False, colorbar=True, show=True, title=None,
+           axes=None, layout=None, yscale='auto', mask=None, mask_style=None, mask_cmap='Greys',
+           mask_alpha=1, combine=None, exclude=[], verbose=None)
+
+ax = fig.axes[0]
+ax.set_ylim(0, 20)
+fig.savefig(sdir_ezm +'Spectrogram_close_to_open_mPFC.svg', transparent=True)
 
 
+#%%
+power = mne.time_frequency.tfr_multitaper(OTC_vHPC, freqs=freqs, n_cycles=n_cycles,
+                                          time_bandwidth=time_bandwidth,
+                                          return_itc=False,
+                                          n_jobs=workers,
+                                          average=True)
 
+fig = power.plot(baseline=(-1, 0), mode='mean', tmin=None, tmax=None, fmin=None, fmax=None,
+           dB=False, colorbar=True, show=True, title=None,
+           axes=None, layout=None, yscale='auto', mask=None, mask_style=None, mask_cmap='Greys',
+           mask_alpha=0.1, combine=None, exclude=[], verbose=None)
 
+ax = fig.axes[0]
+ax.set_ylim(0, 20)
+fig.savefig(sdir_ezm +'Spectrogram_open_to_close_vHPC.svg', transparent=True)
 
+#%%
+power = mne.time_frequency.tfr_multitaper(OTC_mPFC, freqs=freqs, n_cycles=n_cycles,
+                                          time_bandwidth=time_bandwidth,
+                                          return_itc=False,
+                                          n_jobs=workers,
+                                          average=True)
 
+fig = power.plot(baseline=(-1, 0), mode='mean', tmin=None, tmax=None, fmin=None, fmax=None,
+           dB=False, colorbar=True, show=True, title=None,
+           axes=None, layout=None, yscale='auto', mask=None, mask_style=None, mask_cmap='Greys',
+           mask_alpha=0.1, combine=None, exclude=[], verbose=None)
 
+ax = fig.axes[0]
+ax.set_ylim(0, 20)
+fig.savefig(sdir_ezm +'Spectrogram_open_to_close_mPFC.svg', transparent=True)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+#%%
+type(fig)
+ax = fig.axes[0]
+ax.set_ylim(0, 20)
+fig.show()
+fig.gca().set_title('Test')
+fig.show()
 
 
 
@@ -1377,26 +2347,6 @@ corr_vHPC = df_arena_vhipp.corrwith(df_arena_mpfc[5])
 print('One mPFC channel against all the channels in vHPC = ', corr_vHPC)
 
 
-#%%
-##mBWfus009_0219, BWfus009_0305
-remv_ch_mpfc = []
-remv_ch_vhipp= [0, 1, 2, 3, 4, 5, 6, 7, 8]
-
-ch_mpfc = [1:16]
-ch_vhipp = [10:16]
-
-##mBWfus008_0219
-# rev_ch_mpfc = []
-# rev_ch_vhipp= []
-
-##mBWfus010_0226
-# rev_ch_mpfc = [27, 28]
-# rev_ch_vhipp= [21, 22,23,24,25, 26, 27, 28]
-
-
-# mBWfus012_0226
-# rev_ch_mpfc = []
-# rev_ch_vhipp= []
 
 #%%
 ### remove the channels showing low correlation of theta power (threshold = 0.2 (Pearson coefficient))

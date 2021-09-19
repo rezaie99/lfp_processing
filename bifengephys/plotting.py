@@ -318,6 +318,7 @@ def power_correlation_plot(x, y, corr, sdir, title, xlabel, ylabel):
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
     plt.title(title_plot)
+    plt.ticklabel_format(axis='both', style="sci", scilimits=(0, 0))
     plt.savefig(sdir + title + '.png')
     plt.show()
 

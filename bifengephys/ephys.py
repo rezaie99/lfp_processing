@@ -14,24 +14,18 @@ import random
 
 def load_data(session):
     file = session + '/ephys_processed/' + session + '_dataset.pkl'
+    print(file)
     with open(file, 'rb') as f:
         data = pickle.load(f)
         f.close()
     return data
 
 
-#
-# def get_ch(data, brain_area):
-#     if brain_area == 'all':
-#         return sum(data['info']['ch_names'].values(), [])
-#     else:
-#         return data['info']['ch_names']['ch_' + brain_area]
-
 def get_ch(data):
     return data['info']['ch_names']
 
 
-def get_lfp(dataset): ## get the lfp data, crop out the part before trigger
+def get_lfp(dataset): ## get the lfp data, crop the part before LED_off
     print(dataset['lfp']['amplifier_data'].shape)
     ephys_trigger = dataset['info']['ephys_trigger']
     srate = dataset['info']['frequency_para']['downsample freq/hz']
