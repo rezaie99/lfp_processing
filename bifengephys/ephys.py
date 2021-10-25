@@ -177,6 +177,7 @@ def column_by_pad(df):
     return df
 
 
+
 def explore_clusters(dataset, area, cluster_threshold, plot=True, n_clusters=4):
     lfp = get_lfp(dataset, brain_area=area)
     power = get_power(dataset, area)
@@ -735,4 +736,36 @@ def unit_test():
     plt.show()
 
 
+def data_to_long(df, mpfc_ch, vhpc_ch, freqs, pad_depth):
+    data_list = []
+    for col in df.columns:
+        if col in mpfc_ch and col in pad_depth.keys():
+            data = pd.DataFrame.from_dict({'Freq(Hz)': list(freqs),
+                                           'Amp': list(df[col])})
+            data['Depth'] = round(pad_depth[col])
+            data['Area'] = 'mPFC'
+            data_list.append(data)
 
+        if col in vhpc_ch and col in pad_depth.keys():
+            data = pd.DataFrame.from_dict({'Freq(Hz)': list(freqs),
+                                           'Amp': list(df[col])})
+            data['Depth'] = round(pad_depth[col])  ## it fills all the rows with ''
+            data['Area'] = 'vHPC'
+            data_list.append(data)
+
+    merged_data = pd.concat(data_list)
+    return merged_data
+
+
+def mean_std(data, mpfc_ch):
+    mPFC_mean = np.mean(data[:len(mpfc_ch), :], axis=0)
+    mPFC_std = np.std(data[:len(mpfc_ch), :], axis=0)
+    vHPC_mean = np.mean(data[len(mpfc_ch):, :], axis=0)
+    vHPC_std = np.std(data[len(mpfc_ch):, :], axis=0)
+
+    return mPFC_mean, mPFC_std, vHPC_mean, vHPC_std
+
+
+def get_rms(data):
+  data2 = np.power(data,2)
+  return np.sqrt(np.sum(data2, axis=0)/data.shape[0])

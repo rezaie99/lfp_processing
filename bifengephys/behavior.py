@@ -21,7 +21,7 @@ def load_location(session):
     return loc, scorer
 
 
-def calib_location(loc_df, sdir, task='ezm', THRL=0.95, THRD=5):
+def calib_location(loc_df, sdir, xymax, THRL=0.95, THRD=5):
     scorer = loc_df.columns[0][0]
     bodyparts = loc_df.columns.levels[1].to_list()
     length = len(loc_df)
@@ -47,21 +47,11 @@ def calib_location(loc_df, sdir, task='ezm', THRL=0.95, THRD=5):
         # (B) if the likelihood value is below a certain threshold
         # or (C) the point is currently out of frame
         # the video frame is 330 by 330 pixels in size in OFT sessions, but approx. 400 by 400 in EZM sessions
-        if task == 'ezm':
-            XYMAX = 450
-        elif task == 'epm':
-            XYMAX = 450
-        elif task == 'oft':
-            XYMAX = 350
-        elif task == 'arena':
-            XYMAX = 200
-        else:
-            raise ValueError('Video resolution is not defined for this behavior.')
 
         XMIN = 0
-        XMAX = XYMAX
+        XMAX = xymax
         YMIN = 0
-        YMAX = XYMAX
+        YMAX = xymax
 
         num_processed = 0
         process = False
@@ -93,6 +83,7 @@ def calib_location(loc_df, sdir, task='ezm', THRL=0.95, THRD=5):
 
     title = 'Locomotion trajectory'
     ax.set_title(title)
+    plt.tight_layout()
     plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0., fontsize=12)
     plt.savefig(sdir + 'locomotion trajectory.png')
     plt.show()
@@ -471,7 +462,7 @@ def get_center_exit_events(prev, dest, frame_trans):
 
     return center_exit_time
 
-
+## for
 def get_rois_dists(loc_x, loc_y, start_frame, end_frame):
     roi_at_each_frame = []
     rois = []
@@ -1073,3 +1064,68 @@ def merge_events(OTC, prOTC, prCTO, nosedip):
     events = np.concatenate(events, axis=0)
     events = events[events[:, 0].argsort()]
     return events
+
+
+def evaluate_OF(traj_x, traj_y, srate, center_area, corners):
+    ### create trajectory corordinates of the animal (body parts)
+    traj_xy = list(zip(traj_x, traj_y))
+
+    center_area_count = 0
+    peri_area_count = 0
+    corners_count = 0
+
+    # Create Point objects
+    head_cord = Point(traj_xy[0])
+
+    # initiate the position of the animal
+    mouse_in_center = head_cord.within(center_area)
+    center_idx = []
+    peri_idx = []
+    corners_idx=[]
+
+    ### find out where is the animal in a frame
+    for i in range(len(traj_x)):
+        # Create Point objects
+        head_cord = Point(traj_xy[i])
+
+        if mouse_in_center == True:
+            if head_cord.within(center_area):
+                center_area_count += 1
+                center_idx.append(i)
+                # print('mouse_in_center', center_area_count)
+
+            if head_cord.within(center_area) == False:
+                peri_area_count += 1
+                mouse_in_center = False
+                # print('mouse_in_peri', peri_area_count)
+
+        elif mouse_in_center == False:
+            if head_cord.within(center_area):
+                center_area_count += 1
+                mouse_in_center = True
+                center_idx.append(i)
+                # print('mouse_in_center', center_area_count)
+
+            elif head_cord.within(center_area) == False:
+                peri_area_count += 1
+                peri_idx.append(i)
+
+                for corner in corners:
+                    if head_cord.within(corner):
+                        corners_count += 1
+                        corners_idx.append(i)
+                # print('mouse_in_peri', peri_area_count)
+
+    time_in_center = center_area_count * 1/srate  ## 25 ms per frame
+    time_in_peri = peri_area_count * 1/srate  ## 25 ms per frame
+
+    percentage_in_center_area = time_in_center / (time_in_center + time_in_peri)
+    ### Validate the result, two values should be the same
+
+    print(peri_area_count + center_area_count)
+
+    print('time_in_center = ', time_in_center, '\n')
+    print('time_in_peri = ', time_in_peri, '\n', '\n',
+          'percentage_in_center_area = ', percentage_in_center_area, '\n', '\n')
+
+    return time_in_center, time_in_peri, percentage_in_center_area, center_idx, peri_idx, corners_idx
