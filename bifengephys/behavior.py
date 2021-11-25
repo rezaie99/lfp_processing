@@ -82,6 +82,7 @@ def calib_location(loc_df, sdir, xymax, THRL=0.95, THRD=5):
                  label=bd, alpha=0.3)
 
     title = 'Locomotion trajectory'
+    ax.legend(loc='upper right')
     ax.set_title(title)
     plt.tight_layout()
     plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0., fontsize=12)

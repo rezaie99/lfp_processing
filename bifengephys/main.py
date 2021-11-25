@@ -637,7 +637,7 @@ epochs = {'0-2min':(0, 120),
 
 tasks = {'cage': (raw_cage.copy(), sdir_cage),
         'arena_bef': (raw_arena_bef.copy(), sdir_arena_bef),
-        'recovery': (raw_recover.copy(), sdir_recover),
+        # 'recovery': (raw_recover.copy(), sdir_recover),
         'arena_aft': (raw_arena.copy(), sdir_arena),
         'ezm': (raw_ezm.copy(), sdir_ezm),
         'oft': (raw_oft.copy(), sdir_oft)}
@@ -851,8 +851,8 @@ adaptive=False, low_bias=True, normalization='length', picks=None, proj=False, n
 '''
 #%%
 # #
-# data = raw_cage.copy()
-# sdir = sdir_cage
+data = raw_cage.copy()
+sdir = sdir_cage
 #
 # data = raw_arena_bef.copy()
 # sdir = sdir_arena_bef
@@ -863,8 +863,8 @@ adaptive=False, low_bias=True, normalization='length', picks=None, proj=False, n
 # data = raw_ezm.copy()
 # sdir = sdir_ezm
 # #
-data = raw_oft.copy()
-sdir = sdir_oft
+# data = raw_oft.copy()
+# sdir = sdir_oft
 
 epochs = mne.make_fixed_length_epochs(data, duration=2.6)
 freqs = np.arange(4, 12, 0.1)
@@ -968,8 +968,8 @@ data = ephys.load_data(session)
 lfp = ephys.column_by_pad(ephys.get_lfp(data)) ## crop the time series before LED_off
 lfp = lfp[wanted_ch]
 print(lfp.shape)
-lfp_rms = ephys.get_rms(lfp)
-lfp_norm = lfp / lfp_rms
+lfp_rms = ephys.get_rms(lfp) ## get the root mean square of individual channel from the entire recording
+lfp_norm = lfp / lfp_rms ## normalize LFP to the rms
 
 ch_list= [str(el) for el in lfp.columns.tolist()]
 print(len(ch_list), ch_list)
@@ -1347,8 +1347,8 @@ for area in areas:
     ## plot location of the mouse and the distribution of speed
 #%%
 
-area, loc_x, loc_y, speed = 'Closed arm', loc_x_close, loc_y_close, spd_close
-# area, loc_x, loc_y, speed = 'Open arm', loc_x_open, loc_y_open, spd_open
+# area, loc_x, loc_y, speed = 'Closed arm', loc_x_close, loc_y_close, spd_close
+area, loc_x, loc_y, speed = 'Open arm', loc_x_open, loc_y_open, spd_open
 
 
 epochs = {'0-2min':(0, 120),
@@ -1770,7 +1770,7 @@ bands = {'delta': (1.5, 4.0),
          'alpha': (7.0, 10.0),
          'beta': (10.0, 30.0),
          'gamma': (30.0, 100.0),
-         'mua': (200, 249)}
+         'mua': (200, None)}
 
 ezm_hilbert_power = {}
 power_close = {}
@@ -1803,6 +1803,37 @@ for i, band in enumerate(bands):
 
 plt.savefig(sdir_ezm + 'hilbert power.png', dpi=300)
 plt.show()
+
+#%% Find the MUA peaks using 2 SD
+epsilon_zscored = stats.zscore(ezm_hilbert_power['mua'], axis=1) ## z-score the power to mean and sd
+
+epsilon_close = epsilon_zscored[:, close_idx]
+epsilon_open = epsilon_zscored[:, open_idx]
+
+
+mua = []
+for ch in range(epsilon_zscored.shape[0]):
+    mua.append(signal.find_peaks(epsilon_zscored[0, :], height=2.0))
+
+
+#%%
+fig, axes = plt.subplots(3, 5, figsize=(16, 12))
+# ax.imshow(epsilon_zscored[:, 5500:6000],cmap="RdBu_r")
+# ax.plot(epsilon_zscored[0, 10000:20000])
+axes = axes.reshape(-1)
+for i in range(epsilon_zscored.shape[0]):
+    axes[i].hist(epsilon_close[i, :], bins=50, range=(0, 6), density=True, label='Closed arm', alpha=0.6)
+    axes[i].hist(epsilon_open[i, :], bins=50, range=(0, 6), density=True, label='Open arm',  alpha=0.6)
+    axes[i].legend(loc='upper right')
+
+for i in range(10,15):
+    axes[i].set_xlabel('MUA power (z-scored)')
+
+fig.suptitle('MUA power distribution (z-scored)', fontsize=32)
+plt.tight_layout()
+plt.savefig(sdir_ezm + 'distribution of mua power.png', dpi=300)
+plt.show()
+
 
 
 
@@ -2159,7 +2190,7 @@ plt.savefig(sdir_oft + 'Locomotion Trajectory with rois.png', dpi=300, transpare
 plt.show()
 
 
-#%%
+#%%  ##'Speed distribution peripheral vs center'
 spd_center = spd_upsampled[center_idx_500hz]
 spd_peri = spd_upsampled[peri_idx_500hz]
 spd_corner = spd_upsampled[corner_idx_500hz]
